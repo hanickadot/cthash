@@ -92,6 +92,8 @@ TEST_CASE("sha256 empty input") {
 	REQUIRE(staging[61] == 0b01011110010000100111000110001000ul);
 	REQUIRE(staging[62] == 0b01000100101111001110110001011101ul);
 	REQUIRE(staging[63] == 0b00111011010111101100010010011011ul);
+
+	REQUIRE(64 == staging.size());
 }
 
 template <typename T> decltype(auto) runtime_pass(T && val) {

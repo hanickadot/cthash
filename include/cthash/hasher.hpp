@@ -113,6 +113,22 @@ template <typename Config> struct internal_hasher {
 		return w;
 	}
 
+	static constexpr auto choice(state_item_t e, state_item_t f, state_item_t g) noexcept -> state_item_t {
+		return (e bitand f) xor (~e bitand g);
+	}
+
+	static constexpr auto majority(state_item_t a, state_item_t b, state_item_t c) noexcept -> state_item_t {
+		return (a bitand b) xor (a bitand c) xor (b bitand c);
+	}
+
+	static constexpr auto sum_a(state_item_t a) noexcept -> state_item_t {
+		return std::rotr(a, config.compress_constants[3]) xor std::rotr(a, config.compress_constants[4]) xor std::rotr(a, config.compress_constants[5]);
+	}
+
+	static constexpr auto sum_e(state_item_t e) noexcept -> state_item_t {
+		return std::rotr(e, config.compress_constants[0]) xor std::rotr(e, config.compress_constants[1]) xor std::rotr(e, config.compress_constants[2]);
+	}
+
 	static constexpr void rounds(staging_view_t w, state_value_t & state) noexcept {
 		// create copy of internal state
 		auto wvar = state_value_t(state);
@@ -128,13 +144,8 @@ template <typename Config> struct internal_hasher {
 		auto & h = wvar[7];
 
 		for (int i = 0; i != config.rounds_number; ++i) {
-			const state_item_t S1 = std::rotr(e, config.compress_constants[0]) xor std::rotr(e, config.compress_constants[1]) xor std::rotr(e, config.compress_constants[2]);
-			const state_item_t choice = (e bitand f) xor (~e bitand g);
-			const state_item_t temp1 = h + S1 + choice + config.constants[i] + w[i];
-
-			const state_item_t S0 = std::rotr(a, config.compress_constants[3]) xor std::rotr(a, config.compress_constants[4]) xor std::rotr(a, config.compress_constants[5]);
-			const state_item_t majority = (a bitand b) xor (a bitand c) xor (b bitand c);
-			const state_item_t temp2 = S0 + majority;
+			const state_item_t temp1 = h + sum_e(e) + choice(e, f, g) + config.constants[i] + w[i];
+			const state_item_t temp2 = sum_a(a) + majority(a, b, c);
 
 			// move around
 			h = g;
@@ -183,8 +194,7 @@ template <typename Config> struct internal_hasher {
 		}
 	}
 
-	constexpr void finalize_buffer() noexcept {
-		// we know it's not used completely, otherwise `update_to_buffer_and_process` function would process it
+	static constexpr bool finalize_buffer(block_value_t & block, size_t block_used) noexcept {
 		CTHASH_ASSERT(block_used < block.size());
 		const auto free_space = std::span(block).subspan(block_used);
 
@@ -192,19 +202,28 @@ template <typename Config> struct internal_hasher {
 		*it++ = std::byte{0b1000'0000u};							   // first byte after data contains bit at MSB
 		std::fill(it, (block.data() + block.size()), std::byte{0x0u}); // rest is filled with zeros
 
-		if (free_space.size() < (1zu + (config.length_size_bits / 8zu))) {
-			// process block without length at the end
+		// we don't have enough space to write length bits
+		return free_space.size() < (1zu + (config.length_size_bits / 8zu));
+	}
+
+	static constexpr void finalize_buffer_by_writing_length(block_value_t & block, length_t total_length) noexcept {
+		unwrap_bigendian_number{std::span(block).template last<sizeof(length_t)>()} = (total_length * 8zu);
+	}
+
+	constexpr void finalize() noexcept {
+		if (finalize_buffer(block, block_used)) {
+			// we didn't have enough space, we need to process block
 			const staging_value_t w = build_staging(block);
 			rounds(w, hash);
 
-			// create block of all zeros
+			// zero it out
 			std::fill(block.begin(), block.end(), std::byte{0x0u});
 		}
 
-		// add total_length at the end of block (in bits)
-		// this works even if we have uint128_t for size
-		unwrap_bigendian_number{std::span(block).template last<sizeof(length_t)>()} = (total_length * 8zu);
+		// we either have space to write or we have zerod out block
+		finalize_buffer_by_writing_length(block, total_length);
 
+		// calculate last round
 		const staging_value_t w = build_staging(block);
 		rounds(w, hash);
 	}
@@ -255,7 +274,7 @@ template <typename Config> struct hasher: private internal_hasher<Config> {
 
 	// output (by reference or by value)
 	constexpr void final(digest_span_t digest) noexcept {
-		super::finalize_buffer();
+		super::finalize();
 		super::write_result_into(digest);
 	}
 
