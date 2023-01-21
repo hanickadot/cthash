@@ -29,9 +29,6 @@ struct sha256_config {
 	static constexpr size_t block_size = 512u / 8u; // bytes
 	static constexpr size_t digest_length = 32u;	// bytes
 
-	// resulting value type
-	using output_type = std::array<std::byte, digest_length>;
-
 	// internal state
 	static constexpr auto initial_values = std::array<uint32_t, 8>{
 		// h_0 ... h_8
@@ -62,18 +59,20 @@ struct sha256_config {
 		0x748f82eeul, 0x78a5636ful, 0x84c87814ul, 0x8cc70208ul, 0x90befffaul, 0xa4506cebul, 0xbef9a3f7ul, 0xc67178f2ul};
 };
 
+template <typename T> concept one_byte_char = (sizeof(T) == 1zu);
+
 template <typename T> concept byte_like = (sizeof(T) == 1zu) && (std::same_as<T, char> || std::same_as<T, unsigned char> || std::same_as<T, char8_t> || std::same_as<T, std::byte> || std::same_as<T, uint8_t> || std::same_as<T, int8_t>);
 
-template <typename T> concept is_string_literal = requires(const T & in) //
+template <typename T> concept string_literal = requires(const T & in) //
 {
-	[]<typename CharT, size_t N>(const CharT(&)[N]) {}(in);
+	[]<one_byte_char CharT, size_t N>(const CharT(&)[N]) {}(in);
 };
 
 template <typename T> concept convertible_to_byte_span = requires(T && obj) //
 {
 	{ std::span(obj) };
 	requires byte_like<typename decltype(std::span(obj))::value_type>;
-	requires !is_string_literal<T>;
+	requires !string_literal<T>;
 };
 
 template <typename It1, typename It2, typename It3> constexpr auto byte_copy(It1 first, It2 last, It3 destination) {
@@ -123,52 +122,58 @@ void dump_block(std::span<const uint32_t> in) {
 }
 */
 
-template <typename Config> struct hasher {
-	static constexpr size_t block_size = Config::block_size;
-	static constexpr size_t digest_length = Config::digest_length;
+template <typename Config> struct internal_hasher {
+	static constexpr auto config = Config{};
 
-	using output_type = typename Config::output_type;
-	using staging_type = typename Config::staging_type;
+	// internal types
+	using state_value_t = std::remove_cvref_t<decltype(Config::initial_values)>;
 
-	static constexpr size_t staging_size = Config::staging_size;
+	using block_value_t = std::array<std::byte, config.block_size>;
+	using block_view_t = std::span<const std::byte, config.block_size>;
 
-	using hash_state = std::remove_cvref_t<decltype(Config::initial_values)>;
-	static constexpr auto & initial_values = Config::initial_values;
-	static constexpr auto & constants = Config::constants;
-	static constexpr int rounds_number = Config::rounds_number;
+	using staging_item_t = typename Config::staging_type;
+	using staging_value_t = std::array<staging_item_t, config.staging_size>;
+	using staging_view_t = std::span<const staging_item_t, config.staging_size>;
 
-	hash_state hash;
+	using digest_span_t = std::span<std::byte, config.digest_length>;
+	using result_t = cthash::tagged_hash_value<Config>;
+
+	// internal state
+	state_value_t hash;
 	uint64_t total_length;
 
-	std::array<std::byte, block_size> block;
+	block_value_t block;
 	unsigned block_used;
 
-	// user API
-	constexpr hasher() noexcept: hash{Config::initial_values}, total_length{0zu}, block_used{0u} { }
+	// constructors
+	constexpr internal_hasher() noexcept: hash{config.initial_values}, total_length{0zu}, block_used{0u} { }
+	constexpr internal_hasher(const internal_hasher &) noexcept = default;
+	constexpr internal_hasher(internal_hasher &&) noexcept = default;
+	constexpr ~internal_hasher() noexcept = default;
 
-	constexpr auto prepare_staging(std::span<const std::byte, block_size> chunk) const noexcept -> std::array<uint32_t, 64> {
-		[[clang::uninitialized]] std::array<staging_type, staging_size> w;
+	static constexpr auto prepare_staging(block_view_t chunk) noexcept -> staging_value_t {
+		[[clang::uninitialized]] staging_value_t w;
 
-		constexpr int first_part_of_staging_size = int(block_size / sizeof(staging_type));
+		constexpr auto first_part_size = config.block_size / sizeof(staging_item_t);
 
 		// fill first part with chunk
-		for (int i = 0; i != first_part_of_staging_size; ++i) {
-			w[i] = cast_from_bytes<staging_type>(chunk.subspan(i * sizeof(staging_type)).template first<sizeof(staging_type)>());
+		for (int i = 0; i != int(first_part_size); ++i) {
+			w[i] = cast_from_bytes<staging_item_t>(chunk.subspan(i * sizeof(staging_item_t)).template first<sizeof(staging_item_t)>());
 		}
 
 		// fill the rest (generify)
-		for (int i = first_part_of_staging_size; i != int(staging_size); ++i) {
-			const staging_type s0 = std::rotr(w[i - 15], 7) xor std::rotr(w[i - 15], 18) xor (w[i - 15] >> 3);
-			const staging_type s1 = std::rotr(w[i - 2], 17) xor std::rotr(w[i - 2], 19) xor (w[i - 2] >> 10);
+		for (int i = int(first_part_size); i != int(config.staging_size); ++i) {
+			const staging_item_t s0 = std::rotr(w[i - 15], 7) xor std::rotr(w[i - 15], 18) xor (w[i - 15] >> 3);
+			const staging_item_t s1 = std::rotr(w[i - 2], 17) xor std::rotr(w[i - 2], 19) xor (w[i - 2] >> 10);
 			w[i] = w[i - 16] + s0 + w[i - 7] + s1;
 		}
 
 		return w;
 	}
 
-	constexpr void rounds(std::span<const staging_type, staging_size> w) noexcept {
+	constexpr void rounds(staging_view_t w) noexcept {
 		// create copy of internal state
-		auto working_variables = hash_state(hash);
+		auto working_variables = state_value_t(hash);
 
 		// just give them names
 		auto & a = working_variables[0];
@@ -180,10 +185,10 @@ template <typename Config> struct hasher {
 		auto & g = working_variables[6];
 		auto & h = working_variables[7];
 
-		for (int i = 0; i != rounds_number; ++i) {
+		for (int i = 0; i != config.rounds_number; ++i) {
 			const uint32_t S1 = std::rotr(e, 6) xor std::rotr(e, 11) xor std::rotr(e, 25);
 			const uint32_t choice = (e bitand f) xor (~e bitand g);
-			const uint32_t temp1 = h + S1 + choice + constants[i] + w[i];
+			const uint32_t temp1 = h + S1 + choice + config.constants[i] + w[i];
 
 			const uint32_t S0 = std::rotr(a, 2) xor std::rotr(a, 13) xor std::rotr(a, 22);
 			const uint32_t majority = (a bitand b) xor (a bitand c) xor (b bitand c);
@@ -208,9 +213,9 @@ template <typename Config> struct hasher {
 	}
 
 	// this implementation works only with input size aligned to bytes (not bits)
-	template <byte_like T> constexpr auto & update(std::span<const T> in) noexcept {
+	template <byte_like T> constexpr void update_to_buffer_and_process(std::span<const T> in) noexcept {
 		for (;;) {
-			const auto remaining_free_space = std::span<std::byte, block_size>(block).subspan(block_used);
+			const auto remaining_free_space = std::span<std::byte, config.block_size>(block).subspan(block_used);
 			const auto to_copy = in.first(std::min(in.size(), remaining_free_space.size()));
 
 			const auto it = byte_copy(to_copy.begin(), to_copy.end(), remaining_free_space.begin());
@@ -219,7 +224,7 @@ template <typename Config> struct hasher {
 
 			if (it != remaining_free_space.end()) {
 				block_used += to_copy.size();
-				break;
+				return;
 			} else {
 				block_used = 0zu;
 			}
@@ -227,7 +232,7 @@ template <typename Config> struct hasher {
 			assert(it == remaining_free_space.end());
 
 			// we have block!
-			const std::array<uint32_t, 64> w = prepare_staging(block);
+			const staging_value_t w = prepare_staging(block);
 			rounds(w);
 			block_used = 0zu;
 
@@ -236,12 +241,12 @@ template <typename Config> struct hasher {
 			// TODO maybe avoid copying the data and process it directly over span
 		}
 
-		return *this;
+		return;
 	}
 
 	constexpr void pad() noexcept {
 		// TODO fixme?
-		const auto remaining_free_space = std::span<std::byte, block_size>(block).subspan(block_used);
+		const auto remaining_free_space = std::span<std::byte, config.block_size>(block).subspan(block_used);
 		auto it = remaining_free_space.data();
 		*it++ = std::byte{0b1000'0000u};
 		// std::cout << "distance = " << std::distance(it, remaining_free_space.data() + remaining_free_space.size()) << "\n";
@@ -249,20 +254,7 @@ template <typename Config> struct hasher {
 		unwrap_bigendian_number{remaining_free_space.template last<8>()} = (total_length * 8zu); // total length in bits at the end of last block
 	}
 
-	template <convertible_to_byte_span T> constexpr auto & update(T && something) noexcept {
-		using value_type = typename decltype(std::span(something))::value_type;
-		return update(std::span<const value_type>(something));
-	}
-
-	template <typename CharT> constexpr auto & update(std::basic_string_view<CharT> in) noexcept {
-		return update(std::span<const char>(in.data(), in.size()));
-	}
-
-	template <typename CharT, size_t N> constexpr auto & update(const CharT (&in)[N]) noexcept {
-		return update(std::basic_string_view<CharT>(in, N - 1zu));
-	}
-
-	constexpr void final(std::span<std::byte, digest_length> out) noexcept {
+	constexpr void finalize_and_write_into(digest_span_t out) noexcept {
 		// std::cout << "final...\n";
 		if (block_used >= (block.size() - 9zu)) {
 			// TODO two blocks will be needed
@@ -271,7 +263,7 @@ template <typename Config> struct hasher {
 
 		pad();
 
-		const std::array<uint32_t, 64> w = prepare_staging(block);
+		const staging_value_t w = prepare_staging(block);
 		rounds(w);
 
 		// copy result to byte result
@@ -279,17 +271,55 @@ template <typename Config> struct hasher {
 			unwrap_bigendian_number<uint32_t>{out.subspan(i * 4).template first<4>()} = hash[i];
 		}
 	}
+};
 
-	template <typename OutputType = cthash::tagged_hash_value<Config>> constexpr auto final() noexcept {
-		OutputType output;
-		final(output);
+// this is a convinience type for nicer UX...
+template <typename Config> struct hasher: private internal_hasher<Config> {
+	using super = internal_hasher<Config>;
+	using result_t = typename super::result_t;
+	using digest_span_t = typename super::digest_span_t;
+
+	constexpr hasher() noexcept: super() { }
+	constexpr hasher(const hasher &) noexcept = default;
+	constexpr hasher(hasher &&) noexcept = default;
+	constexpr ~hasher() noexcept = default;
+
+	// support for various input types
+	constexpr hasher & update(std::span<const std::byte> input) noexcept {
+		super::update_to_buffer_and_process(input);
+		return *this;
+	}
+
+	template <convertible_to_byte_span T> constexpr hasher & update(const T & something) noexcept {
+		using value_type = typename decltype(std::span(something))::value_type;
+		super::update_to_buffer_and_process(std::span<const value_type>(something));
+		return *this;
+	}
+
+	template <one_byte_char CharT> constexpr hasher & update(std::basic_string_view<CharT> in) noexcept {
+		super::update_to_buffer_and_process(std::span(in.data(), in.size()));
+		return *this;
+	}
+
+	template <string_literal T> constexpr hasher & update(const T & lit) noexcept {
+		super::update_to_buffer_and_process(std::span(lit, std::size(lit) - 1zu));
+		return *this;
+	}
+
+	// output (by reference or by value)
+	constexpr void final(digest_span_t digest) noexcept {
+		super::finalize_and_write_into(digest);
+	}
+
+	constexpr auto final() noexcept {
+		result_t output;
+		super::finalize_and_write_into(output);
 		return output;
 	}
 };
 
-struct sha256: hasher<sha256_config> { };
-
-using sha256_value = tagged_hash_value<sha256_config>;
+using sha256 = hasher<sha256_config>;
+using sha256_value = typename hasher<sha256_config>::result_t;
 
 namespace literals {
 
