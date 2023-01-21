@@ -24,6 +24,8 @@ constexpr auto my_hash = cthash::simple<cthash::sha256>("hello there!");
 static_assert(my_hash == "c69509590d81db2f37f9d75480c8efedf79a77933db5a8319e52e13bfd9874a3"_sha256);
 ```
 
+Also look at [runtime example](example.cpp).
+
 ### Including library
 
 You can include specific hash function only by `#include <cthash/variants/sha256.hpp>` or you can include whole library by `#include <cthash/cthash.hpp>`
@@ -38,4 +40,7 @@ There is no allocation at all, everything is done as a value type from user's pe
 
 ## Compiler support
 
-* Clang 15.0.7+ (developed and tested with in C++23 mode)
+You need a C++23 compiler.
+
+* Clang 15.0.7+
+* GCC 12.2+ 
