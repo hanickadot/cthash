@@ -10,3 +10,4 @@ target_link_libraries(test-runner PRIVATE Catch2::Catch2WithMain cthash)
 target_compile_features(test-runner PUBLIC cxx_std_23)
 
 add_custom_target(test test-runner DEPENDS test-runner)
+add_custom_target(long-test test-runner "\[.long\]" DEPENDS test-runner)

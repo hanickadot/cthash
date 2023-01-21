@@ -13,12 +13,12 @@
 namespace cthash {
 
 struct sha256_config {
+	using length_type = uint64_t;
+
 	static constexpr size_t block_bits = 512u;
 	static constexpr size_t digest_length = 32u;
 
-	// internal state
 	static constexpr auto initial_values = std::array<uint32_t, 8>{
-		// h_0 ... h_8
 		0x6a09e667ul,
 		0xbb67ae85ul,
 		0x3c6ef372ul,
@@ -29,13 +29,10 @@ struct sha256_config {
 		0x5be0cd19ul,
 	};
 
-	// staging buffer type
-	using staging_type = uint32_t;
-	static constexpr size_t staging_size = 64zu;
-
-	// constants for rounds (same type as staging)
+	// rounds constants...
 	static constexpr int rounds_number = 64;
-	static constexpr auto constants = std::array<staging_type, staging_size>{// k[64]
+
+	static constexpr auto constants = std::array<uint32_t, 64>{
 		0x428a2f98ul, 0x71374491ul, 0xb5c0fbcful, 0xe9b5dba5ul, 0x3956c25bul, 0x59f111f1ul, 0x923f82a4ul, 0xab1c5ed5ul,
 		0xd807aa98ul, 0x12835b01ul, 0x243185beul, 0x550c7dc3ul, 0x72be5d74ul, 0x80deb1feul, 0x9bdc06a7ul, 0xc19bf174ul,
 		0xe49b69c1ul, 0xefbe4786ul, 0x0fc19dc6ul, 0x240ca1ccul, 0x2de92c6ful, 0x4a7484aaul, 0x5cb0a9dcul, 0x76f988daul,
@@ -89,25 +86,6 @@ template <typename T> constexpr auto cast_from_bytes(std::span<const std::byte, 
 	}
 	(std::make_index_sequence<sizeof(T)>());
 }
-/*
-void dump_block(std::span<const std::byte> in) {
-	std::cout << "-------\n";
-	for (int i = 0; i != (int)in.size(); ++i) {
-		const auto v = in[i];
-		std::cout << std::hex << std::setw(2) << std::setfill('0') << (unsigned)v << ' ';
-		if (i % 4 == 3) std::cout << "\n";
-	}
-	std::cout << "-------\n";
-}
-
-void dump_block(std::span<const uint32_t> in) {
-	std::cout << "-------\n";
-	for (int i = 0; i != (int)in.size(); ++i) {
-		std::cout << i << " = " << std::bitset<32>(in[i]) << "\n";
-	}
-	std::cout << "-------\n";
-}
-*/
 
 template <typename Config> struct internal_hasher {
 	static constexpr auto config = Config{};
@@ -119,16 +97,18 @@ template <typename Config> struct internal_hasher {
 	using block_value_t = std::array<std::byte, block_size_bytes>;
 	using block_view_t = std::span<const std::byte, block_size_bytes>;
 
-	using staging_item_t = typename Config::staging_type;
-	using staging_value_t = std::array<staging_item_t, config.staging_size>;
-	using staging_view_t = std::span<const staging_item_t, config.staging_size>;
+	using staging_item_t = typename decltype(config.constants)::value_type;
+	static constexpr size_t staging_size = config.constants.size();
+	using staging_value_t = std::array<staging_item_t, staging_size>;
+	using staging_view_t = std::span<const staging_item_t, staging_size>;
 
 	using digest_span_t = std::span<std::byte, config.digest_length>;
 	using result_t = cthash::tagged_hash_value<Config>;
+	using length_t = typename Config::length_type;
 
 	// internal state
 	state_value_t hash;
-	uint64_t total_length;
+	length_t total_length;
 
 	block_value_t block;
 	unsigned block_used;
@@ -139,7 +119,8 @@ template <typename Config> struct internal_hasher {
 	constexpr internal_hasher(internal_hasher &&) noexcept = default;
 	constexpr ~internal_hasher() noexcept = default;
 
-	static constexpr auto prepare_staging(block_view_t chunk) noexcept -> staging_value_t {
+	// take buffer and build staging
+	static constexpr auto build_staging(block_view_t chunk) noexcept -> staging_value_t {
 		[[clang::uninitialized]] staging_value_t w;
 
 		constexpr auto first_part_size = block_size_bytes / sizeof(staging_item_t);
@@ -150,7 +131,7 @@ template <typename Config> struct internal_hasher {
 		}
 
 		// fill the rest (generify)
-		for (int i = int(first_part_size); i != int(config.staging_size); ++i) {
+		for (int i = int(first_part_size); i != int(staging_size); ++i) {
 			const staging_item_t s0 = std::rotr(w[i - 15], 7) xor std::rotr(w[i - 15], 18) xor (w[i - 15] >> 3);
 			const staging_item_t s1 = std::rotr(w[i - 2], 17) xor std::rotr(w[i - 2], 19) xor (w[i - 2] >> 10);
 			w[i] = w[i - 16] + s0 + w[i - 7] + s1;
@@ -220,7 +201,7 @@ template <typename Config> struct internal_hasher {
 			assert(it == remaining_free_space.end());
 
 			// we have block!
-			const staging_value_t w = prepare_staging(block);
+			const staging_value_t w = build_staging(block);
 			rounds(w, hash);
 
 			// continue with the next block (if there is any)
@@ -231,18 +212,28 @@ template <typename Config> struct internal_hasher {
 		return;
 	}
 
-	static constexpr auto modify_and_add_padding(block_value_t & block, unsigned used, size_t total_length) noexcept -> block_view_t {
-		// TODO fixme?
-		const auto remaining_free_space = std::span(block).subspan(used);
-		auto it = remaining_free_space.data();
-		*it++ = std::byte{0b1000'0000u};
-		std::fill(it, block.end(), std::byte{0x0u});
-		unwrap_bigendian_number{remaining_free_space.template last<8>()} = (total_length * 8zu); // total length in bits at the end of last block
-		return block;
-	}
-
 	constexpr void finalize_buffer() noexcept {
-		const staging_value_t w = prepare_staging(modify_and_add_padding(block, block_used, total_length));
+		// we know it's not used completely, otherwise `update_to_buffer_and_process` function would process it
+		assert(block_used < block.size());
+		const auto free_space = std::span(block).subspan(block_used);
+
+		auto it = free_space.data();
+		*it++ = std::byte{0b1000'0000u};							   // first byte after data contains bit at MSB
+		std::fill(it, (block.data() + block.size()), std::byte{0x0u}); // rest is filled with zeros
+
+		if (free_space.size() < (1zu + sizeof(length_t))) {
+			// process block without length at the end
+			const staging_value_t w = build_staging(block);
+			rounds(w, hash);
+
+			// create block of all zeros
+			std::fill(block.begin(), block.end(), std::byte{0x0u});
+		}
+
+		// add total_length at the end of block (in bits)
+		unwrap_bigendian_number{std::span(block).template last<sizeof(length_t)>()} = (total_length * 8zu);
+
+		const staging_value_t w = build_staging(block);
 		rounds(w, hash);
 	}
 
@@ -258,6 +249,7 @@ template <typename Config> struct internal_hasher {
 template <typename Config> struct hasher: private internal_hasher<Config> {
 	using super = internal_hasher<Config>;
 	using result_t = typename super::result_t;
+	using length_t = typename super::length_t;
 	using digest_span_t = typename super::digest_span_t;
 
 	constexpr hasher() noexcept: super() { }
@@ -297,6 +289,10 @@ template <typename Config> struct hasher: private internal_hasher<Config> {
 		result_t output;
 		this->final(output);
 		return output;
+	}
+
+	constexpr length_t size() const noexcept {
+		return super::total_length;
 	}
 };
 
