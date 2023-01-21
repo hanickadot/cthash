@@ -297,6 +297,10 @@ template <typename Config> struct hasher: private internal_hasher<Config> {
 	}
 };
 
+template <typename Hasher, typename T> constexpr auto simple(const T & value) noexcept {
+	return Hasher{}.update(value).final();
+}
+
 } // namespace cthash
 
 #endif
