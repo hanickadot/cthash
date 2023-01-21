@@ -105,9 +105,7 @@ template <typename Config> struct internal_hasher {
 
 		// fill the rest (generify)
 		for (int i = int(first_part_size); i != int(staging_size); ++i) {
-			const staging_item_t s0 = std::rotr(w[i - 15], config.staging_constants[0]) xor std::rotr(w[i - 15], config.staging_constants[1]) xor (w[i - 15] >> config.staging_constants[2]);
-			const staging_item_t s1 = std::rotr(w[i - 2], config.staging_constants[3]) xor std::rotr(w[i - 2], config.staging_constants[4]) xor (w[i - 2] >> config.staging_constants[5]);
-			w[i] = w[i - 16] + s0 + w[i - 7] + s1;
+			w[i] = w[i - 16] + config.sigma_0(w[i - 15]) + w[i - 7] + config.sigma_1(w[i - 2]);
 		}
 
 		return w;
@@ -119,14 +117,6 @@ template <typename Config> struct internal_hasher {
 
 	static constexpr auto majority(state_item_t a, state_item_t b, state_item_t c) noexcept -> state_item_t {
 		return (a bitand b) xor (a bitand c) xor (b bitand c);
-	}
-
-	static constexpr auto sum_a(state_item_t a) noexcept -> state_item_t {
-		return std::rotr(a, config.compress_constants[3]) xor std::rotr(a, config.compress_constants[4]) xor std::rotr(a, config.compress_constants[5]);
-	}
-
-	static constexpr auto sum_e(state_item_t e) noexcept -> state_item_t {
-		return std::rotr(e, config.compress_constants[0]) xor std::rotr(e, config.compress_constants[1]) xor std::rotr(e, config.compress_constants[2]);
 	}
 
 	static constexpr void rounds(staging_view_t w, state_value_t & state) noexcept {
@@ -144,8 +134,8 @@ template <typename Config> struct internal_hasher {
 		auto & h = wvar[7];
 
 		for (int i = 0; i != config.rounds_number; ++i) {
-			const state_item_t temp1 = h + sum_e(e) + choice(e, f, g) + config.constants[i] + w[i];
-			const state_item_t temp2 = sum_a(a) + majority(a, b, c);
+			const state_item_t temp1 = h + config.sum_e(e) + choice(e, f, g) + config.constants[i] + w[i];
+			const state_item_t temp2 = config.sum_a(a) + majority(a, b, c);
 
 			// move around
 			h = g;

@@ -16,12 +16,17 @@ struct sha256_config {
 
 	static constexpr size_t values_for_output = initial_values.size();
 
-	// staging & compress constants (rotate & shifts)
-	static constexpr auto staging_constants = std::array<unsigned, 6>{7, 18, 3, 17, 19, 10};
+	// staging sigmas
+	static constexpr auto sigma_0(uint32_t w_15) noexcept -> uint32_t {
+		return std::rotr(w_15, 7) xor std::rotr(w_15, 18) xor (w_15 >> 3);
+	}
+
+	static constexpr auto sigma_1(uint32_t w_2) noexcept -> uint32_t {
+		return std::rotr(w_2, 17) xor std::rotr(w_2, 19) xor (w_2 >> 10);
+	}
 
 	// rounds constants...
 	static constexpr int rounds_number = 64;
-	static constexpr auto compress_constants = std::array<unsigned, 6>{6, 11, 25, 2, 13, 22};
 
 	static constexpr auto constants = std::array<uint32_t, 64>{
 		0x428a2f98ul, 0x71374491ul, 0xb5c0fbcful, 0xe9b5dba5ul, 0x3956c25bul, 0x59f111f1ul, 0x923f82a4ul, 0xab1c5ed5ul,
@@ -32,6 +37,15 @@ struct sha256_config {
 		0xa2bfe8a1ul, 0xa81a664bul, 0xc24b8b70ul, 0xc76c51a3ul, 0xd192e819ul, 0xd6990624ul, 0xf40e3585ul, 0x106aa070ul,
 		0x19a4c116ul, 0x1e376c08ul, 0x2748774cul, 0x34b0bcb5ul, 0x391c0cb3ul, 0x4ed8aa4aul, 0x5b9cca4ful, 0x682e6ff3ul,
 		0x748f82eeul, 0x78a5636ful, 0x84c87814ul, 0x8cc70208ul, 0x90befffaul, 0xa4506cebul, 0xbef9a3f7ul, 0xc67178f2ul};
+
+	// rounds sums
+	static constexpr auto sum_a(uint32_t a) noexcept -> uint32_t {
+		return std::rotr(a, 2) xor std::rotr(a, 13) xor std::rotr(a, 22);
+	}
+
+	static constexpr auto sum_e(uint32_t e) noexcept -> uint32_t {
+		return std::rotr(e, 6) xor std::rotr(e, 11) xor std::rotr(e, 25);
+	}
 };
 
 using sha256 = hasher<sha256_config>;

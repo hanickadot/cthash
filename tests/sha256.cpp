@@ -1,14 +1,9 @@
+#include "internal/support.hpp"
 #include <cthash/sha2.hpp>
 #include <catch2/benchmark/catch_benchmark.hpp>
 #include <catch2/catch_test_macros.hpp>
 
 using namespace cthash::literals;
-
-template <size_t N, typename T = std::byte> consteval auto array_of_zeros() {
-	std::array<T, N> output;
-	for (T & val: output) val = T{0};
-	return output;
-}
 
 TEST_CASE("sha256 size") {
 	auto h = cthash::sha256{};
@@ -94,10 +89,6 @@ TEST_CASE("sha256 empty input") {
 	REQUIRE(staging[63] == 0b00111011010111101100010010011011ul);
 
 	REQUIRE(64 == staging.size());
-}
-
-template <typename T> decltype(auto) runtime_pass(T && val) {
-	return val;
 }
 
 TEST_CASE("sha256 basics (constexpr and runtime)") {

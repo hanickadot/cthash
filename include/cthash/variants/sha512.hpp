@@ -16,12 +16,17 @@ struct sha512_config {
 
 	static constexpr size_t values_for_output = 8zu;
 
-	// staging constants (rotate & shifts)
-	static constexpr auto staging_constants = std::array<unsigned, 6>{1, 8, 7, 19, 61, 6};
+	// staging functions
+	static constexpr auto sigma_0(uint64_t w_15) noexcept -> uint64_t {
+		return std::rotr(w_15, 1) xor std::rotr(w_15, 8) xor (w_15 >> 7);
+	}
+
+	static constexpr auto sigma_1(uint64_t w_2) noexcept -> uint64_t {
+		return std::rotr(w_2, 19) xor std::rotr(w_2, 61) xor (w_2 >> 6);
+	}
 
 	// rounds constants...
 	static constexpr int rounds_number = 80;
-	static constexpr auto compress_constants = std::array<unsigned, 6>{28, 34, 39, 14, 18, 41};
 
 	static constexpr auto constants = std::array<uint64_t, 80>{
 		0x428a2f98d728ae22ull, 0x7137449123ef65cdull, 0xb5c0fbcfec4d3b2full, 0xe9b5dba58189dbbcull, 0x3956c25bf348b538ull,
@@ -40,6 +45,14 @@ struct sha512_config {
 		0xd186b8c721c0c207ull, 0xeada7dd6cde0eb1eull, 0xf57d4f7fee6ed178ull, 0x06f067aa72176fbaull, 0x0a637dc5a2c898a6ull,
 		0x113f9804bef90daeull, 0x1b710b35131c471bull, 0x28db77f523047d84ull, 0x32caab7b40c72493ull, 0x3c9ebe0a15c9bebcull,
 		0x431d67c49c100d4cull, 0x4cc5d4becb3e42b6ull, 0x597f299cfc657e2aull, 0x5fcb6fab3ad6faecull, 0x6c44198c4a475817ull};
+
+	static constexpr auto sum_a(uint64_t a) noexcept -> uint64_t {
+		return std::rotr(a, 28) xor std::rotr(a, 34) xor std::rotr(a, 39);
+	}
+
+	static constexpr auto sum_e(uint64_t e) noexcept -> uint64_t {
+		return std::rotr(e, 14) xor std::rotr(e, 18) xor std::rotr(e, 41);
+	}
 };
 
 using sha512 = hasher<sha512_config>;
