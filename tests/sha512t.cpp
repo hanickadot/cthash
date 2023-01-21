@@ -78,3 +78,40 @@ TEST_CASE("sha512/224 (basics)") {
 	REQUIRE(v7 == "6992572b245cb279973a119cb7f2859e75dff8c5fb9ace89566ae06d"_sha512_224);
 	REQUIRE(v7 == v7r);
 }
+
+TEST_CASE("sha512/256 (basics)") {
+	constexpr auto v1 = cthash::sha512t<256>{}.update("").final();
+	auto v1r = cthash::sha512t<256>{}.update(runtime_pass("")).final();
+	REQUIRE(v1 == "c672b8d1ef56ed28ab87c3622c5114069bdd3ad7b8f9737498d0c01ecef0967a"_sha512_256);
+	REQUIRE(v1 == v1r);
+
+	constexpr auto v2 = cthash::sha512t<256>{}.update("hana").final();
+	auto v2r = cthash::sha512t<256>{}.update(runtime_pass("hana")).final();
+	REQUIRE(v2 == "2a0e3f7643580859507710f4569a60a86c83c025955298e7a93d766f71e8e399"_sha512_256);
+	REQUIRE(v2 == v2r);
+
+	constexpr auto v3 = cthash::sha512t<256>{}.update(array_of_zeros<32>()).final();
+	auto v3r = cthash::sha512t<256>{}.update(runtime_pass(array_of_zeros<32, char>())).final();
+	REQUIRE(v3 == "af13c048991224a5e4c664446b688aaf48fb5456db3629601b00ec160c74e554"_sha512_256);
+	REQUIRE(v3 == v3r);
+
+	constexpr auto v4 = cthash::sha512t<256>{}.update(array_of_zeros<64>()).final();
+	auto v4r = cthash::sha512t<256>{}.update(runtime_pass(array_of_zeros<64>())).final();
+	REQUIRE(v4 == "8aeecfa0b9f2ac7818863b1362241e4f32d06b100ae9d1c0fbcc4ed61b91b17a"_sha512_256);
+	REQUIRE(v4 == v4r);
+
+	constexpr auto v5 = cthash::sha512t<256>{}.update(array_of_zeros<120>()).final();
+	auto v5r = cthash::sha512t<256>{}.update(runtime_pass(array_of_zeros<120, char>())).final();
+	REQUIRE(v5 == "067880a5256c0584cff10526ed4c9761e584bf0ecdb1b12c2ae7f1dcedaf3dbf"_sha512_256);
+	REQUIRE(v5 == v5r);
+
+	constexpr auto v6 = cthash::sha512t<256>{}.update(array_of_zeros<128>()).final();
+	auto v6r = cthash::sha512t<256>{}.update(runtime_pass(array_of_zeros<128>())).final();
+	REQUIRE(v6 == "fe3d375e149b888e08e2521007764b422d2cd6f7b0606881b7fe1b1370d5fa88"_sha512_256);
+	REQUIRE(v6 == v6r);
+
+	constexpr auto v7 = cthash::sha512t<256>{}.update(array_of_zeros<512>()).final();
+	auto v7r = cthash::sha512t<256>{}.update(runtime_pass(array_of_zeros<512>())).final();
+	REQUIRE(v7 == "552b405c9716945bfc0caee69baec21b2a05560bfbf58db8bd1a4c2cc42b42a6"_sha512_256);
+	REQUIRE(v7 == v7r);
+}

@@ -35,23 +35,23 @@ namespace sha256t_support {
 		}
 	}
 
-	static constexpr auto calculate_sha512t_iv(std::span<const char> in) {
-		auto sha512hasher = internal_hasher<sha512_config>{};
-
-		// modify IV
-		for (auto & val: sha512hasher.hash) {
-			val = val xor 0xa5a5a5a5a5a5a5a5ull;
-		}
-
-		sha512hasher.update_to_buffer_and_process(in);
-		sha512hasher.finalize();
-		return sha512hasher.hash;
-	}
-
 } // namespace sha256t_support
 
+static consteval auto calculate_sha512t_iv(std::span<const char> in) {
+	auto sha512hasher = internal_hasher<sha512_config>{};
+
+	// modify IV
+	for (auto & val: sha512hasher.hash) {
+		val = val xor 0xa5a5a5a5a5a5a5a5ull;
+	}
+
+	sha512hasher.update_to_buffer_and_process(in);
+	sha512hasher.finalize();
+	return sha512hasher.hash;
+}
+
 template <size_t T> constexpr auto signature_for_sha512t = sha256t_support::generate_signature<sha256t_support::width_of_decimal(T)>(T);
-template <size_t T> constexpr auto iv_for_sha512t = sha256t_support::calculate_sha512t_iv(signature_for_sha512t<T>);
+template <size_t T> constexpr auto iv_for_sha512t = calculate_sha512t_iv(signature_for_sha512t<T>);
 
 template <unsigned T> struct sha512t_config: sha512_config {
 	static_assert(T % 8u == 0u, "only hashes aligned to bytes are supported");
