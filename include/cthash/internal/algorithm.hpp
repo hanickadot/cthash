@@ -3,7 +3,7 @@
 
 #include <numeric>
 #include <compare>
-#include <cstdint>
+#include <cstddef>
 
 namespace cthash::internal {
 

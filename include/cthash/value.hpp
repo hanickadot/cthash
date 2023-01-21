@@ -15,8 +15,9 @@ template <typename> struct identify;
 
 template <size_t N> struct hash_value: std::array<std::byte, N> {
 	using super = std::array<std::byte, N>;
-	using super::super;
 
+	constexpr hash_value() noexcept: super{} { }
+	explicit constexpr hash_value(super && s) noexcept: super(s) { }
 	template <typename CharT> explicit consteval hash_value(const CharT (&in)[N * 2zu + 1zu]) noexcept: super{internal::hexdec_to_binary<N>(std::span<const CharT, N * 2zu>(in, N * 2zu))} { }
 	template <typename CharT> explicit consteval hash_value(const internal::fixed_string<CharT, N * 2zu> & in) noexcept: super{internal::hexdec_to_binary<N>(std::span<const CharT, N * 2zu>(in.data(), in.size()))} { }
 
@@ -37,8 +38,11 @@ template <typename CharT, size_t N> hash_value(std::span<const CharT, N>) -> has
 template <typename CharT, size_t N> hash_value(const internal::fixed_string<CharT, N> &) -> hash_value<N / 2zu>;
 
 template <typename Tag> struct tagged_hash_value: hash_value<Tag::digest_length> {
+	static constexpr size_t N = Tag::digest_length;
+
 	using super = hash_value<Tag::digest_length>;
 	using super::super;
+	template <typename CharT> explicit consteval tagged_hash_value(const internal::fixed_string<CharT, N * 2zu> & in) noexcept: super{in} { }
 
 	static constexpr size_t digest_length = Tag::digest_length;
 };

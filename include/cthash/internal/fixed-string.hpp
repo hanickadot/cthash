@@ -1,6 +1,7 @@
 #ifndef CTHASH_INTERNAL_FIXED_STRING_HPP
 #define CTHASH_INTERNAL_FIXED_STRING_HPP
 
+#include <algorithm>
 #include <span>
 #include <string_view>
 

@@ -94,7 +94,7 @@ template <typename Config> struct internal_hasher {
 
 	// take buffer and build staging
 	static constexpr auto build_staging(block_view_t chunk) noexcept -> staging_value_t {
-		[[clang::uninitialized]] staging_value_t w;
+		staging_value_t w;
 
 		constexpr auto first_part_size = block_size_bytes / sizeof(staging_item_t);
 

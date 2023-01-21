@@ -5,6 +5,6 @@
 #include "variants/sha256.hpp"
 #include "variants/sha384.hpp"
 #include "variants/sha512.hpp"
-#include "variants/sha512t.hpp"
+#include "variants/sha512/t.hpp"
 
 #endif

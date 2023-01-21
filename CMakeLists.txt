@@ -20,3 +20,6 @@ if (CTHASH_TESTS)
 endif()
 
 add_subdirectory(include)
+
+add_executable(example example.cpp)
+target_link_libraries(example cthash)

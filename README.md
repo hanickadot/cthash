@@ -35,3 +35,7 @@ Just include `#include <cthash/variants/sha512/t.hpp>`.
 ## Implementation note
 
 There is no allocation at all, everything is done as a value type from user's perspective. No explicit optimizations were done (for now).
+
+## Compiler support
+
+* Clang 15.0.7+ (developed and tested with in C++23 mode)
