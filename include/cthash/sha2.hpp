@@ -10,24 +10,11 @@
 #include <concepts>
 #include <cstdint>
 
-// TODO delete me
-#include <bitset>
-#include <iomanip>
-#include <iostream>
-
 namespace cthash {
 
-namespace literals {
-
-	consteval auto operator""_B(unsigned long long v) noexcept {
-		return static_cast<std::byte>(v);
-	}
-
-} // namespace literals
-
 struct sha256_config {
-	static constexpr size_t block_size = 512u / 8u; // bytes
-	static constexpr size_t digest_length = 32u;	// bytes
+	static constexpr size_t block_bits = 512u;
+	static constexpr size_t digest_length = 32u;
 
 	// internal state
 	static constexpr auto initial_values = std::array<uint32_t, 8>{
@@ -124,12 +111,13 @@ void dump_block(std::span<const uint32_t> in) {
 
 template <typename Config> struct internal_hasher {
 	static constexpr auto config = Config{};
+	static constexpr size_t block_size_bytes = config.block_bits / 8zu;
 
 	// internal types
 	using state_value_t = std::remove_cvref_t<decltype(Config::initial_values)>;
 
-	using block_value_t = std::array<std::byte, config.block_size>;
-	using block_view_t = std::span<const std::byte, config.block_size>;
+	using block_value_t = std::array<std::byte, block_size_bytes>;
+	using block_view_t = std::span<const std::byte, block_size_bytes>;
 
 	using staging_item_t = typename Config::staging_type;
 	using staging_value_t = std::array<staging_item_t, config.staging_size>;
@@ -154,7 +142,7 @@ template <typename Config> struct internal_hasher {
 	static constexpr auto prepare_staging(block_view_t chunk) noexcept -> staging_value_t {
 		[[clang::uninitialized]] staging_value_t w;
 
-		constexpr auto first_part_size = config.block_size / sizeof(staging_item_t);
+		constexpr auto first_part_size = block_size_bytes / sizeof(staging_item_t);
 
 		// fill first part with chunk
 		for (int i = 0; i != int(first_part_size); ++i) {
@@ -171,19 +159,19 @@ template <typename Config> struct internal_hasher {
 		return w;
 	}
 
-	constexpr void rounds(staging_view_t w) noexcept {
+	static constexpr void rounds(staging_view_t w, state_value_t & state) noexcept {
 		// create copy of internal state
-		auto working_variables = state_value_t(hash);
+		auto wvar = state_value_t(state);
 
 		// just give them names
-		auto & a = working_variables[0];
-		auto & b = working_variables[1];
-		auto & c = working_variables[2];
-		auto & d = working_variables[3];
-		auto & e = working_variables[4];
-		auto & f = working_variables[5];
-		auto & g = working_variables[6];
-		auto & h = working_variables[7];
+		auto & a = wvar[0];
+		auto & b = wvar[1];
+		auto & c = wvar[2];
+		auto & d = wvar[3];
+		auto & e = wvar[4];
+		auto & f = wvar[5];
+		auto & g = wvar[6];
+		auto & h = wvar[7];
 
 		for (int i = 0; i != config.rounds_number; ++i) {
 			const uint32_t S1 = std::rotr(e, 6) xor std::rotr(e, 11) xor std::rotr(e, 25);
@@ -206,16 +194,16 @@ template <typename Config> struct internal_hasher {
 		}
 
 		// add store back
-		for (int i = 0; i != (int)hash.size(); ++i) {
-			// std::cout << "h" << i << " = " << std::bitset<32>(hash[i]) << " + " << std::bitset<32>(working_variables[i]) << " = " << std::bitset<32>(hash[i] + working_variables[i]) << "\n";
-			hash[i] += working_variables[i];
+		for (int i = 0; i != (int)state.size(); ++i) {
+			// std::cout << "h" << i << " = " << std::bitset<32>(hash[i]) << " + " << std::bitset<32>(wvar[i]) << " = " << std::bitset<32>(hash[i] + wvar[i]) << "\n";
+			state[i] += wvar[i];
 		}
 	}
 
 	// this implementation works only with input size aligned to bytes (not bits)
 	template <byte_like T> constexpr void update_to_buffer_and_process(std::span<const T> in) noexcept {
 		for (;;) {
-			const auto remaining_free_space = std::span<std::byte, config.block_size>(block).subspan(block_used);
+			const auto remaining_free_space = std::span<std::byte, block_size_bytes>(block).subspan(block_used);
 			const auto to_copy = in.first(std::min(in.size(), remaining_free_space.size()));
 
 			const auto it = byte_copy(to_copy.begin(), to_copy.end(), remaining_free_space.begin());
@@ -233,8 +221,7 @@ template <typename Config> struct internal_hasher {
 
 			// we have block!
 			const staging_value_t w = prepare_staging(block);
-			rounds(w);
-			block_used = 0zu;
+			rounds(w, hash);
 
 			// continue with the next block (if there is any)
 			in = in.subspan(to_copy.size());
@@ -244,28 +231,22 @@ template <typename Config> struct internal_hasher {
 		return;
 	}
 
-	constexpr void pad() noexcept {
+	static constexpr auto modify_and_add_padding(block_value_t & block, unsigned used, size_t total_length) noexcept -> block_view_t {
 		// TODO fixme?
-		const auto remaining_free_space = std::span<std::byte, config.block_size>(block).subspan(block_used);
+		const auto remaining_free_space = std::span(block).subspan(used);
 		auto it = remaining_free_space.data();
 		*it++ = std::byte{0b1000'0000u};
-		// std::cout << "distance = " << std::distance(it, remaining_free_space.data() + remaining_free_space.size()) << "\n";
 		std::fill(it, block.end(), std::byte{0x0u});
 		unwrap_bigendian_number{remaining_free_space.template last<8>()} = (total_length * 8zu); // total length in bits at the end of last block
+		return block;
 	}
 
-	constexpr void finalize_and_write_into(digest_span_t out) noexcept {
-		// std::cout << "final...\n";
-		if (block_used >= (block.size() - 9zu)) {
-			// TODO two blocks will be needed
-			return; // :shrug:
-		}
+	constexpr void finalize_buffer() noexcept {
+		const staging_value_t w = prepare_staging(modify_and_add_padding(block, block_used, total_length));
+		rounds(w, hash);
+	}
 
-		pad();
-
-		const staging_value_t w = prepare_staging(block);
-		rounds(w);
-
+	constexpr void write_result_into(digest_span_t out) noexcept {
 		// copy result to byte result
 		for (int i = 0; i != (int)hash.size(); ++i) {
 			unwrap_bigendian_number<uint32_t>{out.subspan(i * 4).template first<4>()} = hash[i];
@@ -308,12 +289,13 @@ template <typename Config> struct hasher: private internal_hasher<Config> {
 
 	// output (by reference or by value)
 	constexpr void final(digest_span_t digest) noexcept {
-		super::finalize_and_write_into(digest);
+		super::finalize_buffer();
+		super::write_result_into(digest);
 	}
 
 	constexpr auto final() noexcept {
 		result_t output;
-		super::finalize_and_write_into(output);
+		this->final(output);
 		return output;
 	}
 };
