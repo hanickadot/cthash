@@ -7,6 +7,7 @@ namespace cthash {
 
 struct sha256_config {
 	using length_type = uint64_t;
+	static constexpr size_t length_size_bits = 64;
 
 	static constexpr size_t block_bits = 512u;
 	static constexpr size_t digest_length = 32u;
@@ -15,8 +16,12 @@ struct sha256_config {
 
 	static constexpr size_t values_for_output = initial_values.size();
 
+	// staging & compress constants (rotate & shifts)
+	static constexpr auto staging_constants = std::array<unsigned, 6>{7, 18, 3, 17, 19, 10};
+
 	// rounds constants...
 	static constexpr int rounds_number = 64;
+	static constexpr auto compress_constants = std::array<unsigned, 6>{6, 11, 25, 2, 13, 22};
 
 	static constexpr auto constants = std::array<uint32_t, 64>{
 		0x428a2f98ul, 0x71374491ul, 0xb5c0fbcful, 0xe9b5dba5ul, 0x3956c25bul, 0x59f111f1ul, 0x923f82a4ul, 0xab1c5ed5ul,

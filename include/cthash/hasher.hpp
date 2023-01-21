@@ -62,6 +62,7 @@ template <typename Config> struct internal_hasher {
 
 	// internal types
 	using state_value_t = std::remove_cvref_t<decltype(Config::initial_values)>;
+	using state_item_t = typename state_value_t::value_type;
 
 	using block_value_t = std::array<std::byte, block_size_bytes>;
 	using block_view_t = std::span<const std::byte, block_size_bytes>;
@@ -101,8 +102,8 @@ template <typename Config> struct internal_hasher {
 
 		// fill the rest (generify)
 		for (int i = int(first_part_size); i != int(staging_size); ++i) {
-			const staging_item_t s0 = std::rotr(w[i - 15], 7) xor std::rotr(w[i - 15], 18) xor (w[i - 15] >> 3);
-			const staging_item_t s1 = std::rotr(w[i - 2], 17) xor std::rotr(w[i - 2], 19) xor (w[i - 2] >> 10);
+			const staging_item_t s0 = std::rotr(w[i - 15], config.staging_constants[0]) xor std::rotr(w[i - 15], config.staging_constants[1]) xor (w[i - 15] >> config.staging_constants[2]);
+			const staging_item_t s1 = std::rotr(w[i - 2], config.staging_constants[3]) xor std::rotr(w[i - 2], config.staging_constants[4]) xor (w[i - 2] >> config.staging_constants[5]);
 			w[i] = w[i - 16] + s0 + w[i - 7] + s1;
 		}
 
@@ -124,13 +125,13 @@ template <typename Config> struct internal_hasher {
 		auto & h = wvar[7];
 
 		for (int i = 0; i != config.rounds_number; ++i) {
-			const uint32_t S1 = std::rotr(e, 6) xor std::rotr(e, 11) xor std::rotr(e, 25);
-			const uint32_t choice = (e bitand f) xor (~e bitand g);
-			const uint32_t temp1 = h + S1 + choice + config.constants[i] + w[i];
+			const state_item_t S1 = std::rotr(e, config.compress_constants[0]) xor std::rotr(e, config.compress_constants[1]) xor std::rotr(e, config.compress_constants[2]);
+			const state_item_t choice = (e bitand f) xor (~e bitand g);
+			const state_item_t temp1 = h + S1 + choice + config.constants[i] + w[i];
 
-			const uint32_t S0 = std::rotr(a, 2) xor std::rotr(a, 13) xor std::rotr(a, 22);
-			const uint32_t majority = (a bitand b) xor (a bitand c) xor (b bitand c);
-			const uint32_t temp2 = S0 + majority;
+			const state_item_t S0 = std::rotr(a, config.compress_constants[3]) xor std::rotr(a, config.compress_constants[4]) xor std::rotr(a, config.compress_constants[5]);
+			const state_item_t majority = (a bitand b) xor (a bitand c) xor (b bitand c);
+			const state_item_t temp2 = S0 + majority;
 
 			// move around
 			h = g;
@@ -190,7 +191,7 @@ template <typename Config> struct internal_hasher {
 		*it++ = std::byte{0b1000'0000u};							   // first byte after data contains bit at MSB
 		std::fill(it, (block.data() + block.size()), std::byte{0x0u}); // rest is filled with zeros
 
-		if (free_space.size() < (1zu + sizeof(length_t))) {
+		if (free_space.size() < (1zu + (config.length_size_bits / 8zu))) {
 			// process block without length at the end
 			const staging_value_t w = build_staging(block);
 			rounds(w, hash);
@@ -200,6 +201,7 @@ template <typename Config> struct internal_hasher {
 		}
 
 		// add total_length at the end of block (in bits)
+		// this works even if we have uint128_t for size
 		unwrap_bigendian_number{std::span(block).template last<sizeof(length_t)>()} = (total_length * 8zu);
 
 		const staging_value_t w = build_staging(block);
@@ -211,7 +213,7 @@ template <typename Config> struct internal_hasher {
 		static_assert(config.values_for_output <= config.initial_values.size());
 
 		for (int i = 0; i != config.values_for_output; ++i) {
-			unwrap_bigendian_number<uint32_t>{out.subspan(i * 4).template first<4>()} = hash[i];
+			unwrap_bigendian_number<state_item_t>{out.subspan(i * sizeof(state_item_t)).template first<sizeof(state_item_t)>()} = hash[i];
 		}
 	}
 };

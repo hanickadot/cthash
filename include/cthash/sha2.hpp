@@ -3,6 +3,7 @@
 
 #include "variants/sha224.hpp"
 #include "variants/sha256.hpp"
+#include "variants/sha512.hpp"
 
 namespace cthash {
 
