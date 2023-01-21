@@ -2,6 +2,7 @@
 #define CONSTEXPR_SHA2_HASHER_HPP
 
 #include "value.hpp"
+#include "internal/assert.hpp"
 #include <algorithm>
 #include <array>
 #include <bit>
@@ -16,9 +17,11 @@ template <typename T> concept one_byte_char = (sizeof(T) == 1zu);
 
 template <typename T> concept byte_like = (sizeof(T) == 1zu) && (std::same_as<T, char> || std::same_as<T, unsigned char> || std::same_as<T, char8_t> || std::same_as<T, std::byte> || std::same_as<T, uint8_t> || std::same_as<T, int8_t>);
 
+template <one_byte_char CharT, size_t N> void string_literal_helper(const CharT (&)[N]);
+
 template <typename T> concept string_literal = requires(const T & in) //
 {
-	[]<one_byte_char CharT, size_t N>(const CharT(&)[N]) {}(in);
+	string_literal_helper(in);
 };
 
 template <typename T> concept convertible_to_byte_span = requires(T && obj) //
@@ -168,7 +171,7 @@ template <typename Config> struct internal_hasher {
 				block_used = 0zu;
 			}
 
-			assert(it == remaining_free_space.end());
+			CTHASH_ASSERT(it == remaining_free_space.end());
 
 			// we have block!
 			const staging_value_t w = build_staging(block);
@@ -178,13 +181,11 @@ template <typename Config> struct internal_hasher {
 			in = in.subspan(to_copy.size());
 			// TODO maybe avoid copying the data and process it directly over span
 		}
-
-		return;
 	}
 
 	constexpr void finalize_buffer() noexcept {
 		// we know it's not used completely, otherwise `update_to_buffer_and_process` function would process it
-		assert(block_used < block.size());
+		CTHASH_ASSERT(block_used < block.size());
 		const auto free_space = std::span(block).subspan(block_used);
 
 		auto it = free_space.data();

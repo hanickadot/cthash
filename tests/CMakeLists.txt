@@ -1,5 +1,3 @@
-message(STATUS "CTDB testing enabled")
-
 find_package(Catch2 3 REQUIRED)
 
 file(GLOB_RECURSE TESTS_SOURCES  LINK_DIRECTORIES false RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} "*.cpp")
@@ -12,3 +10,7 @@ target_compile_features(test-runner PUBLIC cxx_std_23)
 add_custom_target(test test-runner --skip-benchmarks   DEPENDS test-runner)
 add_custom_target(long-test test-runner --skip-benchmarks "*,\[.long\]" DEPENDS test-runner)
 add_custom_target(benchmark test-runner DEPENDS test-runner)
+
+if (CTHASH_TESTS)
+	coverage_report_after(test test-runner)
+endif()
