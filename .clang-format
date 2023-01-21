@@ -165,7 +165,7 @@ SpacesInParentheses: false
 SpacesInSquareBrackets: false
 SpaceBeforeSquareBrackets: false
 BitFieldColonSpacing: After
-Standard:        c++20
+Standard:        c++23
 TabWidth:        4
 UseCRLF:         false
 UseTab:          Always
