@@ -10,15 +10,27 @@ template <size_t N> consteval auto array_of_zero_bytes() {
 TEST_CASE("sha256 basics") {
 	using namespace cthash::literals;
 
-	STATIC_REQUIRE(cthash::sha256{}.update("").final() == std::array<std::byte, 32>{0xe3_B, 0xb0_B, 0xc4_B, 0x42_B, 0x98_B, 0xfc_B, 0x1c_B, 0x14_B, 0x9a_B, 0xfb_B, 0xf4_B, 0xc8_B, 0x99_B, 0x6f_B, 0xb9_B, 0x24_B, 0x27_B, 0xae_B, 0x41_B, 0xe4_B, 0x64_B, 0x9b_B, 0x93_B, 0x4c_B, 0xa4_B, 0x95_B, 0x99_B, 0x1b_B, 0x78_B, 0x52_B, 0xb8_B, 0x55_B});
+	constexpr auto v1 = cthash::sha256{}.update("").final();
+	CAPTURE(v1);
+	REQUIRE(v1 == "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"_hash);
+	REQUIRE(v1 == "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"_sha256);
 
-	STATIC_REQUIRE(cthash::sha256{}.update("hana").final() == std::array<std::byte, 32>{0x59_B, 0x9b_B, 0xa2_B, 0x5a_B, 0x0d_B, 0x7c_B, 0x7d_B, 0x67_B, 0x1b_B, 0xee_B, 0x93_B, 0x17_B, 0x2c_B, 0xa7_B, 0xe2_B, 0x72_B, 0xfc_B, 0x87_B, 0xf0_B, 0xc0_B, 0xe0_B, 0x2e_B, 0x44_B, 0xdf_B, 0x9e_B, 0x94_B, 0x36_B, 0x81_B, 0x90_B, 0x67_B, 0xea_B, 0x28_B});
+	constexpr auto v2 = cthash::sha256{}.update("hana").final();
+	CAPTURE(v2);
+	REQUIRE(v2 == "599ba25a0d7c7d671bee93172ca7e272fc87f0c0e02e44df9e9436819067ea28"_hash);
+	REQUIRE(v2 == "599ba25a0d7c7d671bee93172ca7e272fc87f0c0e02e44df9e9436819067ea28"_sha256);
 
-	STATIC_REQUIRE((cthash::sha256{}.update(array_of_zero_bytes<96>()).final() == std::array<std::byte, 32>{0x2e_B, 0xa9_B, 0xab_B, 0x91_B, 0x98_B, 0xd1_B, 0x63_B, 0x80_B, 0x07_B, 0x40_B, 0x0c_B, 0xd2_B, 0xc3_B, 0xbe_B, 0xf1_B, 0xcc_B, 0x74_B, 0x5b_B, 0x86_B, 0x4b_B, 0x76_B, 0x01_B, 0x1a_B, 0x0e_B, 0x1b_B, 0xc5_B, 0x21_B, 0x80_B, 0xac_B, 0x64_B, 0x52_B, 0xd4_B}));
+	constexpr auto v3 = cthash::sha256{}.update(array_of_zero_bytes<96>()).final();
+	CAPTURE(v3);
+	REQUIRE(v3 == "2ea9ab9198d1638007400cd2c3bef1cc745b864b76011a0e1bc52180ac6452d4"_hash);
+	REQUIRE(v3 == "2ea9ab9198d1638007400cd2c3bef1cc745b864b76011a0e1bc52180ac6452d4"_sha256);
 
-	// static constexpr auto r4 = cthash::sha256{}.update(array_of_zero_bytes<120>()).final();
-	//
-	// REQUIRE((cthash::sha256{}.update(array_of_zero_bytes<120>()).final() == std::array<std::byte, 32>{0x6e_B, 0xdd_B, 0x9f_B, 0x6f_B, 0x9c_B, 0xc9_B, 0x2c_B, 0xde_B, 0xd3_B, 0x6e_B, 0x6c_B, 0x4a_B, 0x58_B, 0x09_B, 0x33_B, 0xf9_B, 0xc9_B, 0xf1_B, 0xb9_B, 0x05_B, 0x62_B, 0xb4_B, 0x69_B, 0x03_B, 0xb8_B, 0x06_B, 0xf2_B, 0x19_B, 0x02_B, 0xa1_B, 0xa5_B, 0x4f_B}));
+	// constexpr auto v4 = cthash::sha256{}.update(array_of_zero_bytes<120>()).final();
+	// STATIC_REQUIRE(v4 == "2ea9ab9198d1638007400cd2c3bef1cc745b864b76011a0e1bc52180ac6452d4"_hash);
+	// STATIC_REQUIRE(v4 == "2ea9ab9198d1638007400cd2c3bef1cc745b864b76011a0e1bc52180ac6452d4"_sha256);
 
-	STATIC_REQUIRE((cthash::sha256{}.update(array_of_zero_bytes<128>()).final() == std::array<std::byte, 32>{0x38_B, 0x72_B, 0x3a_B, 0x2e_B, 0x5e_B, 0x8a_B, 0x17_B, 0xaa_B, 0x79_B, 0x50_B, 0xdc_B, 0x00_B, 0x82_B, 0x09_B, 0x94_B, 0x4e_B, 0x89_B, 0x8f_B, 0x69_B, 0xa7_B, 0xbd_B, 0x10_B, 0xa2_B, 0x3c_B, 0x83_B, 0x9d_B, 0x34_B, 0x1e_B, 0x93_B, 0x5f_B, 0xd5_B, 0xca_B}));
+	constexpr auto v5 = cthash::sha256{}.update(array_of_zero_bytes<128>()).final();
+	CAPTURE(v5);
+	REQUIRE(v5 == "38723a2e5e8a17aa7950dc008209944e898f69a7bd10a23c839d341e935fd5ca"_hash);
+	REQUIRE(v5 == "38723a2e5e8a17aa7950dc008209944e898f69a7bd10a23c839d341e935fd5ca"_sha256);
 }

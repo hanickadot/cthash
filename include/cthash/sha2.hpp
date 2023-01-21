@@ -1,6 +1,7 @@
 #ifndef CONSTEXPR_SHA2_SHA2_HPP
 #define CONSTEXPR_SHA2_SHA2_HPP
 
+#include "value.hpp"
 #include <algorithm>
 #include <array>
 #include <bit>
@@ -32,7 +33,7 @@ struct sha256_config {
 	using output_type = std::array<std::byte, digest_length>;
 
 	// internal state
-	static constexpr auto hash_init = std::array<uint32_t, 8>{
+	static constexpr auto initial_values = std::array<uint32_t, 8>{
 		// h_0 ... h_8
 		0x6a09e667ul,
 		0xbb67ae85ul,
@@ -44,7 +45,13 @@ struct sha256_config {
 		0x5be0cd19ul,
 	};
 
-	static constexpr auto constants = std::array<uint32_t, 64>{// k[64]
+	// staging buffer type
+	using staging_type = uint32_t;
+	static constexpr size_t staging_size = 64zu;
+
+	// constants for rounds (same type as staging)
+	static constexpr int rounds_number = 64;
+	static constexpr auto constants = std::array<staging_type, staging_size>{// k[64]
 		0x428a2f98ul, 0x71374491ul, 0xb5c0fbcful, 0xe9b5dba5ul, 0x3956c25bul, 0x59f111f1ul, 0x923f82a4ul, 0xab1c5ed5ul,
 		0xd807aa98ul, 0x12835b01ul, 0x243185beul, 0x550c7dc3ul, 0x72be5d74ul, 0x80deb1feul, 0x9bdc06a7ul, 0xc19bf174ul,
 		0xe49b69c1ul, 0xefbe4786ul, 0x0fc19dc6ul, 0x240ca1ccul, 0x2de92c6ful, 0x4a7484aaul, 0x5cb0a9dcul, 0x76f988daul,
@@ -121,41 +128,45 @@ template <typename Config> struct hasher {
 	static constexpr size_t digest_length = Config::digest_length;
 
 	using output_type = typename Config::output_type;
+	using staging_type = typename Config::staging_type;
 
-	using hash_state = std::remove_cvref_t<decltype(Config::hash_init)>;
-	static constexpr auto & hash_init = Config::hash_init;
+	static constexpr size_t staging_size = Config::staging_size;
+
+	using hash_state = std::remove_cvref_t<decltype(Config::initial_values)>;
+	static constexpr auto & initial_values = Config::initial_values;
 	static constexpr auto & constants = Config::constants;
+	static constexpr int rounds_number = Config::rounds_number;
 
 	hash_state hash;
+	uint64_t total_length;
 
 	std::array<std::byte, block_size> block;
+	unsigned block_used;
 
-	size_t block_used;
-	size_t total_length;
+	// user API
+	constexpr hasher() noexcept: hash{Config::initial_values}, total_length{0zu}, block_used{0u} { }
 
-	constexpr hasher() noexcept: hash{Config::hash_init}, block_used{0zu}, total_length{0zu} {
-		// std::cout << "init...\n";
-	}
+	constexpr auto prepare_staging(std::span<const std::byte, block_size> chunk) const noexcept -> std::array<uint32_t, 64> {
+		[[clang::uninitialized]] std::array<staging_type, staging_size> w;
 
-	constexpr auto prepare_staging(std::span<const std::byte, Config::block_size> chunk) const noexcept -> std::array<uint32_t, 64> {
-		[[clang::uninitialized]] std::array<uint32_t, 64> w;
+		constexpr int first_part_of_staging_size = int(block_size / sizeof(staging_type));
 
 		// fill first part with chunk
-		for (int i = 0; i != 16; ++i) {
-			w[i] = cast_from_bytes<uint32_t>(chunk.subspan(i * 4).template first<4>());
+		for (int i = 0; i != first_part_of_staging_size; ++i) {
+			w[i] = cast_from_bytes<staging_type>(chunk.subspan(i * sizeof(staging_type)).template first<sizeof(staging_type)>());
 		}
 
-		// fill the rest
-		for (int i = 16; i != 64; ++i) {
-			const uint32_t s0 = std::rotr(w[i - 15], 7) xor std::rotr(w[i - 15], 18) xor (w[i - 15] >> 3);
-			const uint32_t s1 = std::rotr(w[i - 2], 17) xor std::rotr(w[i - 2], 19) xor (w[i - 2] >> 10);
+		// fill the rest (generify)
+		for (int i = first_part_of_staging_size; i != int(staging_size); ++i) {
+			const staging_type s0 = std::rotr(w[i - 15], 7) xor std::rotr(w[i - 15], 18) xor (w[i - 15] >> 3);
+			const staging_type s1 = std::rotr(w[i - 2], 17) xor std::rotr(w[i - 2], 19) xor (w[i - 2] >> 10);
 			w[i] = w[i - 16] + s0 + w[i - 7] + s1;
 		}
 
 		return w;
 	}
 
-	constexpr void rounds(std::span<const uint32_t, 64> w) noexcept {
+	constexpr void rounds(std::span<const staging_type, staging_size> w) noexcept {
 		// create copy of internal state
 		auto working_variables = hash_state(hash);
 
@@ -169,7 +180,7 @@ template <typename Config> struct hasher {
 		auto & g = working_variables[6];
 		auto & h = working_variables[7];
 
-		for (int i = 0; i != 64; ++i) {
+		for (int i = 0; i != rounds_number; ++i) {
 			const uint32_t S1 = std::rotr(e, 6) xor std::rotr(e, 11) xor std::rotr(e, 25);
 			const uint32_t choice = (e bitand f) xor (~e bitand g);
 			const uint32_t temp1 = h + S1 + choice + constants[i] + w[i];
@@ -269,14 +280,25 @@ template <typename Config> struct hasher {
 		}
 	}
 
-	constexpr auto final() noexcept -> output_type {
-		std::array<std::byte, digest_length> output;
-		final(std::span<std::byte, digest_length>(output));
+	template <typename OutputType = cthash::tagged_hash_value<Config>> constexpr auto final() noexcept {
+		OutputType output;
+		final(output);
 		return output;
 	}
 };
 
 struct sha256: hasher<sha256_config> { };
+
+using sha256_value = tagged_hash_value<sha256_config>;
+
+namespace literals {
+
+	template <internal::fixed_string Value>
+	consteval auto operator""_sha256() {
+		return sha256_value(Value);
+	}
+
+} // namespace literals
 
 } // namespace cthash
 

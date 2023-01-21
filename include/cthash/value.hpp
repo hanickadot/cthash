@@ -1,6 +1,8 @@
 #ifndef CTHASH_VALUE_HPP
 #define CTHASH_VALUE_HPP
 
+#include "internal/algorithm.hpp"
+#include "internal/fixed-string.hpp"
 #include "internal/hexdec.hpp"
 #include <array>
 #include <span>
@@ -9,67 +11,42 @@
 
 namespace cthash {
 
-template <typename CharT, size_t N> struct fixed_string {
-	std::array<CharT, N> buffer;
-
-	consteval static auto from_string_literal(const CharT (&in)[N + 1]) -> std::array<CharT, N> {
-		std::array<CharT, N> out;
-		std::copy_n(in, N, out.data());
-		return out;
-	}
-
-	consteval fixed_string(const CharT (&in)[N + 1]) noexcept: buffer{from_string_literal(in)} { }
-
-	consteval const CharT * data() const noexcept {
-		return buffer.data();
-	}
-
-	consteval size_t size() const noexcept {
-		return buffer.size();
-	}
-
-	consteval operator std::span<const CharT, N>() const noexcept {
-		return std::span<const CharT, N>(buffer.data(), buffer.size());
-	}
-
-	consteval operator std::span<const CharT>() const noexcept {
-		return std::span<const CharT>(buffer.data(), buffer.size());
-	}
-
-	consteval operator std::basic_string_view<CharT>() const noexcept {
-		return std::basic_string_view<CharT>(buffer.data(), buffer.size());
-	}
-};
-
-template <typename CharT, size_t N> fixed_string(const CharT (&)[N]) -> fixed_string<CharT, N - 1zu>;
+template <typename> struct identify;
 
 template <size_t N> struct hash_value: std::array<std::byte, N> {
 	using super = std::array<std::byte, N>;
 	using super::super;
 
 	template <typename CharT> explicit consteval hash_value(const CharT (&in)[N * 2zu + 1zu]) noexcept: super{internal::hexdec_to_binary<N>(std::span<const CharT, N * 2zu>(in, N * 2zu))} { }
-	template <typename CharT> explicit consteval hash_value(const fixed_string<CharT, N * 2zu> & in) noexcept: super{internal::hexdec_to_binary<N>(std::span<const CharT, N * 2zu>(in.data(), in.size()))} { }
+	template <typename CharT> explicit consteval hash_value(const internal::fixed_string<CharT, N * 2zu> & in) noexcept: super{internal::hexdec_to_binary<N>(std::span<const CharT, N * 2zu>(in.data(), in.size()))} { }
 
+	// comparison support
 	constexpr friend bool operator==(const hash_value & lhs, const hash_value & rhs) noexcept = default;
-	constexpr friend auto operator<=>(const hash_value & lhs, const hash_value & rhs) noexcept {
-		return 0;
+	constexpr friend auto operator<=>(const hash_value & lhs, const hash_value & rhs) noexcept -> std::strong_ordering {
+		return internal::threeway_compare_of_same_size(lhs.data(), rhs.data(), N);
+	}
+
+	// print to ostream support
+	template <typename CharT, typename Traits> constexpr friend auto & operator<<(std::basic_ostream<CharT, Traits> & os, const hash_value & val) {
+		return internal::push_to_stream_as<internal::byte_hexdec_value>(val.begin(), val.end(), os);
 	}
 };
 
 template <typename CharT, size_t N> hash_value(const CharT (&)[N]) -> hash_value<(N - 1zu) / 2zu>;
 template <typename CharT, size_t N> hash_value(std::span<const CharT, N>) -> hash_value<N / 2zu>;
-template <typename CharT, size_t N> hash_value(const fixed_string<CharT, N> &) -> hash_value<N / 2zu>;
+template <typename CharT, size_t N> hash_value(const internal::fixed_string<CharT, N> &) -> hash_value<N / 2zu>;
 
 template <typename Tag> struct tagged_hash_value: hash_value<Tag::digest_length> {
 	using super = hash_value<Tag::digest_length>;
 	using super::super;
+
+	static constexpr size_t digest_length = Tag::digest_length;
 };
 
 namespace literals {
 
-	template <fixed_string Value>
-	requires(Value.size() == 64)
-	consteval auto operator""_sha256() {
+	template <internal::fixed_string Value>
+	consteval auto operator""_hash() {
 		return hash_value(Value);
 	}
 
