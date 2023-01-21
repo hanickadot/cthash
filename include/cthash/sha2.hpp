@@ -3,10 +3,8 @@
 
 #include "variants/sha224.hpp"
 #include "variants/sha256.hpp"
+#include "variants/sha384.hpp"
 #include "variants/sha512.hpp"
-
-namespace cthash {
-
-} // namespace cthash
+#include "variants/sha512t.hpp"
 
 #endif

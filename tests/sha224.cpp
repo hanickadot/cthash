@@ -1,5 +1,5 @@
 #include "internal/support.hpp"
-#include <cthash/sha2.hpp>
+#include <cthash/variants/sha224.hpp>
 #include <catch2/benchmark/catch_benchmark.hpp>
 #include <catch2/catch_test_macros.hpp>
 
@@ -35,4 +35,9 @@ TEST_CASE("sha224 basics") {
 	auto v6r = cthash::sha224{}.update(runtime_pass(array_of_zeros<128>())).final();
 	REQUIRE(v6 == "2fbd823ebcd9909d265827e4bce793a4fc572e3f39c7c3dd67749f3e"_sha224);
 	REQUIRE(v6 == v6r);
+
+	constexpr auto v7 = cthash::sha224{}.update(array_of_zeros<512>()).final();
+	auto v7r = cthash::sha224{}.update(runtime_pass(array_of_zeros<512, char>())).final();
+	REQUIRE(v7 == "4026dd4dbeb4d8a951dfd9a592897f46203ebe2d99c4a8837aa3afc9"_sha224);
+	REQUIRE(v7 == v7r);
 }

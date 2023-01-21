@@ -218,13 +218,31 @@ template <typename Config> struct internal_hasher {
 		rounds(w, hash);
 	}
 
-	constexpr void write_result_into(digest_span_t out) noexcept {
+	constexpr void write_result_into(digest_span_t out) noexcept
+	requires(config.values_for_output != 0)
+	{
 		// copy result to byte result
 		static_assert(config.values_for_output <= config.initial_values.size());
 
 		for (int i = 0; i != config.values_for_output; ++i) {
 			unwrap_bigendian_number<state_item_t>{out.subspan(i * sizeof(state_item_t)).template first<sizeof(state_item_t)>()} = hash[i];
 		}
+	}
+
+	constexpr void write_result_into(digest_span_t out) noexcept
+	requires(config.values_for_output == 0)
+	{
+		// make sure digest size is smaller than hash state
+		static_assert(config.digest_length <= config.initial_values.size() * sizeof(state_item_t));
+
+		// copy result to byte result
+		std::array<std::byte, sizeof(state_item_t) * config.initial_values.size()> tmp_buffer;
+
+		for (int i = 0; i != (int)config.initial_values.size(); ++i) {
+			unwrap_bigendian_number<state_item_t>{std::span(tmp_buffer).subspan(i * sizeof(state_item_t)).template first<sizeof(state_item_t)>()} = hash[i];
+		}
+
+		std::copy_n(tmp_buffer.data(), config.digest_length, out.data());
 	}
 };
 

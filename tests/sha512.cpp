@@ -1,5 +1,5 @@
 #include "internal/support.hpp"
-#include <cthash/sha2.hpp>
+#include <cthash/variants/sha512.hpp>
 #include <catch2/benchmark/catch_benchmark.hpp>
 #include <catch2/catch_test_macros.hpp>
 
@@ -227,8 +227,10 @@ TEST_CASE("sha512 basics", "") {
 
 	constexpr auto v3 = cthash::sha512{}.update(array_of_zeros<96>()).final();
 	auto v3r = cthash::sha512{}.update(array_of_zeros<96>()).final();
+	auto v3rb = cthash::sha512{}.update(array_of_zeros<96, char>()).final();
 	REQUIRE(v3 == "e866b15da9e5b18d4b3bde250fc08a208399440f37471313c5b4006e4151b0f4464b2cd7246899935d58660c0749cd11570bb8240760a6e46bb175be18cdaffe"_sha512);
 	REQUIRE(v3 == v3r);
+	REQUIRE(v3 == v3rb);
 
 	constexpr auto v4 = cthash::sha512{}.update(array_of_zeros<120>()).final();
 	auto v4r = cthash::sha512{}.update(array_of_zeros<120, char>()).final();
@@ -241,7 +243,9 @@ TEST_CASE("sha512 basics", "") {
 	REQUIRE(v5 == v5r);
 
 	constexpr auto v6 = cthash::sha512{}.update(array_of_zeros<512>()).final();
-	auto v6r = cthash::sha512{}.update(array_of_zeros<512>()).final();
+	auto v6r = cthash::sha512{}.update(array_of_zeros<512, char>()).final();
+	auto v6rb = cthash::sha512{}.update(array_of_zeros<512>()).final();
 	REQUIRE(v6 == "df40d4a774e0b453a5b87c00d6f0ef5d753143454e88ee5f7b607134598294c7905ccbcf94bbc46e474db6eb44e56a6dbb6d9a1be9d4fb5d1b5f2d0c6ed34bfe"_sha512);
 	REQUIRE(v6 == v6r);
+	REQUIRE(v6 == v6rb);
 }
