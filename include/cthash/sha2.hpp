@@ -16,6 +16,14 @@
 
 namespace cthash {
 
+namespace literals {
+
+	consteval auto operator""_B(unsigned long long v) noexcept {
+		return static_cast<std::byte>(v);
+	}
+
+} // namespace literals
+
 struct sha256_config {
 	static constexpr size_t block_size = 512u / 8u; // bytes
 	static constexpr size_t digest_length = 32u;	// bytes
@@ -36,7 +44,7 @@ struct sha256_config {
 		0x5be0cd19ul,
 	};
 
-	static constexpr auto round_constants = std::array<uint32_t, 64>{// k[64]
+	static constexpr auto constants = std::array<uint32_t, 64>{// k[64]
 		0x428a2f98ul, 0x71374491ul, 0xb5c0fbcful, 0xe9b5dba5ul, 0x3956c25bul, 0x59f111f1ul, 0x923f82a4ul, 0xab1c5ed5ul,
 		0xd807aa98ul, 0x12835b01ul, 0x243185beul, 0x550c7dc3ul, 0x72be5d74ul, 0x80deb1feul, 0x9bdc06a7ul, 0xc19bf174ul,
 		0xe49b69c1ul, 0xefbe4786ul, 0x0fc19dc6ul, 0x240ca1ccul, 0x2de92c6ful, 0x4a7484aaul, 0x5cb0a9dcul, 0x76f988daul,
@@ -116,7 +124,7 @@ template <typename Config> struct hasher {
 
 	using hash_state = std::remove_cvref_t<decltype(Config::hash_init)>;
 	static constexpr auto & hash_init = Config::hash_init;
-	static constexpr auto & round_constants = Config::round_constants;
+	static constexpr auto & constants = Config::constants;
 
 	hash_state hash;
 
@@ -129,7 +137,7 @@ template <typename Config> struct hasher {
 		// std::cout << "init...\n";
 	}
 
-	constexpr void rounds(std::span<const std::byte, Config::block_size> chunk) noexcept {
+	constexpr auto prepare_staging(std::span<const std::byte, Config::block_size> chunk) const noexcept -> std::array<uint32_t, 64> {
 		[[clang::uninitialized]] std::array<uint32_t, 64> w;
 
 		// fill first part with chunk
@@ -137,17 +145,17 @@ template <typename Config> struct hasher {
 			w[i] = cast_from_bytes<uint32_t>(chunk.subspan(i * 4).template first<4>());
 		}
 
-		// dump_block(std::span{w}.first(16));
-
 		// fill the rest
 		for (int i = 16; i != 64; ++i) {
 			const uint32_t s0 = std::rotr(w[i - 15], 7) xor std::rotr(w[i - 15], 18) xor (w[i - 15] >> 3);
 			const uint32_t s1 = std::rotr(w[i - 2], 17) xor std::rotr(w[i - 2], 19) xor (w[i - 2] >> 10);
 			w[i] = w[i - 16] + s0 + w[i - 7] + s1;
-
-			// std::cout << i << " = " << std::bitset<32>(w[i]) << "\n";
 		}
 
+		return w;
+	}
+
+	constexpr void rounds(std::span<const uint32_t, 64> w) noexcept {
 		// create copy of internal state
 		auto working_variables = hash_state(hash);
 
@@ -164,7 +172,7 @@ template <typename Config> struct hasher {
 		for (int i = 0; i != 64; ++i) {
 			const uint32_t S1 = std::rotr(e, 6) xor std::rotr(e, 11) xor std::rotr(e, 25);
 			const uint32_t choice = (e bitand f) xor (~e bitand g);
-			const uint32_t temp1 = h + S1 + choice + round_constants[i] + w[i];
+			const uint32_t temp1 = h + S1 + choice + constants[i] + w[i];
 
 			const uint32_t S0 = std::rotr(a, 2) xor std::rotr(a, 13) xor std::rotr(a, 22);
 			const uint32_t majority = (a bitand b) xor (a bitand c) xor (b bitand c);
@@ -179,7 +187,6 @@ template <typename Config> struct hasher {
 			c = b;
 			b = a;
 			a = temp1 + temp2;
-			// std::cout << "(round " << i << ") a = " << std::bitset<32>(a) << "\n";
 		}
 
 		// add store back
@@ -209,10 +216,12 @@ template <typename Config> struct hasher {
 			assert(it == remaining_free_space.end());
 
 			// we have block!
-			rounds(std::span<const std::byte, Config::block_size>(block));
+			const std::array<uint32_t, 64> w = prepare_staging(block);
+			rounds(w);
 			block_used = 0zu;
 
 			// continue with the next block (if there is any)
+			in = in.subspan(to_copy.size());
 			// TODO maybe avoid copying the data and process it directly over span
 		}
 
@@ -251,7 +260,8 @@ template <typename Config> struct hasher {
 
 		pad();
 
-		rounds(std::span<const std::byte, block_size>(block));
+		const std::array<uint32_t, 64> w = prepare_staging(block);
+		rounds(w);
 
 		// copy result to byte result
 		for (int i = 0; i != (int)hash.size(); ++i) {
@@ -267,12 +277,6 @@ template <typename Config> struct hasher {
 };
 
 struct sha256: hasher<sha256_config> { };
-
-constexpr auto empty_sha256 = sha256{}.update(std::string_view{""}).final();
-
-static_assert(sha256{}.update("").final() == std::array<std::byte, 32>{std::byte{0xe3u}, std::byte{0xb0u}, std::byte{0xc4u}, std::byte{0x42u}, std::byte{0x98u}, std::byte{0xfcu}, std::byte{0x1cu}, std::byte{0x14u}, std::byte{0x9au}, std::byte{0xfbu}, std::byte{0xf4u}, std::byte{0xc8u}, std::byte{0x99u}, std::byte{0x6fu}, std::byte{0xb9u}, std::byte{0x24u}, std::byte{0x27u}, std::byte{0xaeu}, std::byte{0x41u}, std::byte{0xe4u}, std::byte{0x64u}, std::byte{0x9bu}, std::byte{0x93u}, std::byte{0x4cu}, std::byte{0xa4u}, std::byte{0x95u}, std::byte{0x99u}, std::byte{0x1bu}, std::byte{0x78u}, std::byte{0x52u}, std::byte{0xb8u}, std::byte{0x55u}});
-
-static_assert(sha256{}.update("hana").final() == std::array<std::byte, 32>{std::byte{0x59u}, std::byte{0x9bu}, std::byte{0xa2u}, std::byte{0x5au}, std::byte{0x0du}, std::byte{0x7cu}, std::byte{0x7du}, std::byte{0x67u}, std::byte{0x1bu}, std::byte{0xeeu}, std::byte{0x93u}, std::byte{0x17u}, std::byte{0x2cu}, std::byte{0xa7u}, std::byte{0xe2u}, std::byte{0x72u}, std::byte{0xfcu}, std::byte{0x87u}, std::byte{0xf0u}, std::byte{0xc0u}, std::byte{0xe0u}, std::byte{0x2eu}, std::byte{0x44u}, std::byte{0xdfu}, std::byte{0x9eu}, std::byte{0x94u}, std::byte{0x36u}, std::byte{0x81u}, std::byte{0x90u}, std::byte{0x67u}, std::byte{0xeau}, std::byte{0x28u}});
 
 } // namespace cthash
 

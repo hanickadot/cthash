@@ -13,6 +13,3 @@ option(CTHASH_TESTS "Enable CTHASH testing" ON)
 if (CTHASH_TESTS)
   add_subdirectory(tests)
 endif()
-
-add_executable(pokus pokus.cpp)
-target_link_libraries(pokus cthash)
