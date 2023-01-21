@@ -150,7 +150,6 @@ template <typename Config> struct internal_hasher {
 
 		// add store back
 		for (int i = 0; i != (int)state.size(); ++i) {
-			// std::cout << "h" << i << " = " << std::bitset<32>(hash[i]) << " + " << std::bitset<32>(wvar[i]) << " = " << std::bitset<32>(hash[i] + wvar[i]) << "\n";
 			state[i] += wvar[i];
 		}
 	}
