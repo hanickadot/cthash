@@ -1,5 +1,7 @@
 #include <cthash/sha2.hpp>
+#include <catch2/benchmark/catch_benchmark.hpp>
 #include <catch2/catch_test_macros.hpp>
+#include <iostream>
 
 using namespace cthash::literals;
 
@@ -35,6 +37,34 @@ TEST_CASE("sha256 basics") {
 	REQUIRE(v5 == "38723a2e5e8a17aa7950dc008209944e898f69a7bd10a23c839d341e935fd5ca"_sha256);
 }
 
+TEST_CASE("sha256 measurements") {
+	std::array<std::byte, 128> input{};
+
+	for (int i = 0; i != (int)input.size(); ++i) {
+		input[i] = static_cast<std::byte>(i);
+	}
+
+	BENCHMARK("16 byte input") {
+		return cthash::sha256{}.update(std::span(input).first(16)).final();
+	};
+
+	BENCHMARK("32 byte input") {
+		return cthash::sha256{}.update(std::span(input).first(32)).final();
+	};
+
+	BENCHMARK("48 byte input") {
+		return cthash::sha256{}.update(std::span(input).first(48)).final();
+	};
+
+	BENCHMARK("64 byte input") {
+		return cthash::sha256{}.update(std::span(input).first(64)).final();
+	};
+
+	BENCHMARK("96 byte input") {
+		return cthash::sha256{}.update(std::span(input).first(96)).final();
+	};
+}
+
 TEST_CASE("sha256 long hash over 512MB", "[.long]") {
 	cthash::sha256 h{};
 	for (int i = 0; i != 512 * 1024; ++i) {
@@ -42,6 +72,8 @@ TEST_CASE("sha256 long hash over 512MB", "[.long]") {
 	}
 	REQUIRE(h.size() == 512u * 1024u * 1024u);
 	const auto r = h.final();
+	const auto end = std::chrono::high_resolution_clock::now();
+
 	REQUIRE(r == "9acca8e8c22201155389f65abbf6bc9723edc7384ead80503839f49dcc56d767"_hash);
 	REQUIRE(r == "9acca8e8c22201155389f65abbf6bc9723edc7384ead80503839f49dcc56d767"_sha256);
 }
