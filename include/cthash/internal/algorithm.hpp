@@ -4,6 +4,7 @@
 #include <numeric>
 #include <compare>
 #include <cstddef>
+#include <cstdint>
 
 namespace cthash::internal {
 

@@ -23,3 +23,6 @@ add_subdirectory(include)
 
 add_executable(example example.cpp)
 target_link_libraries(example cthash)
+
+add_executable(shasum shasum.cpp)
+target_link_libraries(shasum cthash)
