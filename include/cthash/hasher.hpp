@@ -165,7 +165,7 @@ template <typename Config> struct internal_hasher {
 			total_length += to_copy.size();
 
 			if (it != remaining_free_space.end()) {
-				block_used += to_copy.size();
+				block_used += static_cast<unsigned>(to_copy.size());
 				return;
 			} else {
 				block_used = 0zu;
