@@ -6,11 +6,11 @@
 #include <string_view>
 #include <cstddef>
 
-template <typename T> auto & runtime_pass(T && val) {
+template <typename T> const auto & runtime_pass(const T & val) {
 	return val;
 }
 
-template <typename T, size_t N> auto & runtime_pass(const std::array<T, N> & val) {
+template <typename T, size_t N> auto runtime_pass(const std::array<T, N> & val) {
 	return std::span<const T>(val.data(), val.size());
 }
 

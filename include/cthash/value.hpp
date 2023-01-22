@@ -18,8 +18,8 @@ template <size_t N> struct hash_value: std::array<std::byte, N> {
 
 	constexpr hash_value() noexcept: super{} { }
 	explicit constexpr hash_value(super && s) noexcept: super(s) { }
-	template <typename CharT> explicit consteval hash_value(const CharT (&in)[N * 2zu + 1zu]) noexcept: super{internal::hexdec_to_binary<N>(std::span<const CharT, N * 2zu>(in, N * 2zu))} { }
-	template <typename CharT> explicit consteval hash_value(const internal::fixed_string<CharT, N * 2zu> & in) noexcept: super{internal::hexdec_to_binary<N>(std::span<const CharT, N * 2zu>(in.data(), in.size()))} { }
+	template <typename CharT> explicit constexpr hash_value(const CharT (&in)[N * 2zu + 1zu]) noexcept: super{internal::hexdec_to_binary<N>(std::span<const CharT, N * 2zu>(in, N * 2zu))} { }
+	template <typename CharT> explicit constexpr hash_value(const internal::fixed_string<CharT, N * 2zu> & in) noexcept: super{internal::hexdec_to_binary<N>(std::span<const CharT, N * 2zu>(in.data(), in.size()))} { }
 
 	// comparison support
 	constexpr friend bool operator==(const hash_value & lhs, const hash_value & rhs) noexcept = default;
@@ -42,7 +42,7 @@ template <typename Tag> struct tagged_hash_value: hash_value<Tag::digest_length>
 
 	using super = hash_value<Tag::digest_length>;
 	using super::super;
-	template <typename CharT> explicit consteval tagged_hash_value(const internal::fixed_string<CharT, N * 2zu> & in) noexcept: super{in} { }
+	template <typename CharT> explicit constexpr tagged_hash_value(const internal::fixed_string<CharT, N * 2zu> & in) noexcept: super{in} { }
 
 	static constexpr size_t digest_length = Tag::digest_length;
 };
@@ -50,7 +50,7 @@ template <typename Tag> struct tagged_hash_value: hash_value<Tag::digest_length>
 namespace literals {
 
 	template <internal::fixed_string Value>
-	consteval auto operator""_hash() {
+	constexpr auto operator""_hash() {
 		return hash_value(Value);
 	}
 

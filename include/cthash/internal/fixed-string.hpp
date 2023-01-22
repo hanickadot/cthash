@@ -18,23 +18,23 @@ template <typename CharT, size_t N> struct fixed_string {
 
 	consteval fixed_string(const CharT (&in)[N + 1]) noexcept: buffer{from_string_literal(in)} { }
 
-	consteval const CharT * data() const noexcept {
+	constexpr const CharT * data() const noexcept {
 		return buffer.data();
 	}
 
-	consteval size_t size() const noexcept {
+	constexpr size_t size() const noexcept {
 		return buffer.size();
 	}
 
-	consteval operator std::span<const CharT, N>() const noexcept {
+	constexpr operator std::span<const CharT, N>() const noexcept {
 		return std::span<const CharT, N>(buffer.data(), buffer.size());
 	}
 
-	consteval operator std::span<const CharT>() const noexcept {
+	constexpr operator std::span<const CharT>() const noexcept {
 		return std::span<const CharT>(buffer.data(), buffer.size());
 	}
 
-	consteval operator std::basic_string_view<CharT>() const noexcept {
+	constexpr operator std::basic_string_view<CharT>() const noexcept {
 		return std::basic_string_view<CharT>(buffer.data(), buffer.size());
 	}
 };
