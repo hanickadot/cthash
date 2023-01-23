@@ -9,11 +9,11 @@ namespace sha256t_support {
 
 	static consteval size_t width_of_decimal(unsigned t) {
 		if (t < 10u) {
-			return 1zu;
+			return 1u;
 		} else if (t < 100u) {
-			return 2zu;
+			return 2u;
 		} else if (t < 1000u) {
-			return 3zu;
+			return 3u;
 		} else {
 			throw "we don't support more than three digits!";
 		}
@@ -25,11 +25,11 @@ namespace sha256t_support {
 		const char c = '0' + ((t / 1u) % 10u);
 
 		if constexpr (Width == 1) {
-			return std::array<char, Width + 8zu>{'S', 'H', 'A', '-', '5', '1', '2', '/', c};
+			return std::array<char, Width + 8u>{'S', 'H', 'A', '-', '5', '1', '2', '/', c};
 		} else if constexpr (Width == 2) {
-			return std::array<char, Width + 8zu>{'S', 'H', 'A', '-', '5', '1', '2', '/', b, c};
+			return std::array<char, Width + 8u>{'S', 'H', 'A', '-', '5', '1', '2', '/', b, c};
 		} else if constexpr (Width == 3) {
-			return std::array<char, Width + 8zu>{'S', 'H', 'A', '-', '5', '1', '2', '/', a, b, c};
+			return std::array<char, Width + 8u>{'S', 'H', 'A', '-', '5', '1', '2', '/', a, b, c};
 		} else {
 			throw "we don't support greater width than 3";
 		}
@@ -59,11 +59,11 @@ template <unsigned T> struct sha512t_config: sha512_config {
 	static_assert(T <= 512u, "T can't be larger than 512");
 	static_assert(T != 0u, "T can't be zero");
 
-	static constexpr size_t digest_length = T / 8zu;
+	static constexpr size_t digest_length = T / 8u;
 
 	static constexpr std::array<uint64_t, 8> initial_values = iv_for_sha512t<T>;
 
-	static constexpr size_t values_for_output = 0zu;
+	static constexpr size_t values_for_output = 0u;
 };
 
 template <unsigned T> using sha512t = hasher<sha512t_config<T>>;

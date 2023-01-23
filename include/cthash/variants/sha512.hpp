@@ -14,7 +14,7 @@ struct sha512_config {
 
 	static constexpr auto initial_values = std::array<uint64_t, 8>{0x6a09e667f3bcc908ull, 0xbb67ae8584caa73bull, 0x3c6ef372fe94f82bull, 0xa54ff53a5f1d36f1ull, 0x510e527fade682d1ull, 0x9b05688c2b3e6c1full, 0x1f83d9abfb41bd6bull, 0x5be0cd19137e2179ull};
 
-	static constexpr size_t values_for_output = 8zu;
+	static constexpr size_t values_for_output = 8u;
 
 	// staging functions
 	static constexpr auto sigma_0(uint64_t w_15) noexcept -> uint64_t {

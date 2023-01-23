@@ -8,9 +8,9 @@ using namespace cthash::literals;
 TEST_CASE("sha256 size") {
 	auto h = cthash::sha256{};
 	h.update("aloha");
-	REQUIRE(h.size() == 5zu);
+	REQUIRE(h.size() == 5u);
 	h.update("hana");
-	REQUIRE(h.size() == 9zu);
+	REQUIRE(h.size() == 9u);
 }
 
 TEST_CASE("sha256 zero staging should be empty") {

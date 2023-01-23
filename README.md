@@ -40,7 +40,7 @@ There is no allocation at all, everything is done as a value type from user's pe
 
 ## Compiler support
 
-You need a C++23 compiler.
+You need a C++20 compiler.
 
 * Clang 15.0.7+
 * GCC 12.2+ 

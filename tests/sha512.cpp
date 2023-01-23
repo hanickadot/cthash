@@ -33,7 +33,7 @@ TEST_CASE("sha512 internal buffer at the end (two bytes)") {
 	// bit length
 	REQUIRE(unsigned(h.block[127]) == 16u); // 2*8 = 16
 
-	STATIC_REQUIRE(h.block.size() == 128zu);
+	STATIC_REQUIRE(h.block.size() == 128u);
 
 	// rest of the block must be zeros
 	for (int i = 0; i != 128; ++i) {
@@ -76,7 +76,7 @@ TEST_CASE("sha512 internal buffer at the end (111B)") {
 	REQUIRE(unsigned(h.block[126]) == 0b0000'0011u);
 	REQUIRE(unsigned(h.block[127]) == 0b0111'1000u);
 
-	STATIC_REQUIRE(h.block.size() == 128zu);
+	STATIC_REQUIRE(h.block.size() == 128u);
 }
 
 TEST_CASE("sha512 internal buffer at the end (112B, first block)") {
@@ -100,7 +100,7 @@ TEST_CASE("sha512 internal buffer at the end (112B, first block)") {
 		REQUIRE(unsigned(h.block[i]) == 0u);
 	}
 
-	STATIC_REQUIRE(h.block.size() == 128zu);
+	STATIC_REQUIRE(h.block.size() == 128u);
 }
 
 TEST_CASE("sha512 internal buffer at the end (112B, second block)") {
@@ -133,7 +133,7 @@ TEST_CASE("sha512 internal buffer at the end (112B, second block)") {
 	REQUIRE(unsigned(h.block[126]) == 0b0000'0011u);
 	REQUIRE(unsigned(h.block[127]) == 0b1000'0000u);
 
-	STATIC_REQUIRE(h.block.size() == 128zu);
+	STATIC_REQUIRE(h.block.size() == 128u);
 }
 
 TEST_CASE("sha512 empty input") {

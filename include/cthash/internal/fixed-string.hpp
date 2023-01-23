@@ -39,7 +39,7 @@ template <typename CharT, size_t N> struct fixed_string {
 	}
 };
 
-template <typename CharT, size_t N> fixed_string(const CharT (&)[N]) -> fixed_string<CharT, N - 1zu>;
+template <typename CharT, size_t N> fixed_string(const CharT (&)[N]) -> fixed_string<CharT, N - 1>;
 
 } // namespace cthash::internal
 

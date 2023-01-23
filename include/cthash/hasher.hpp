@@ -13,9 +13,9 @@
 
 namespace cthash {
 
-template <typename T> concept one_byte_char = (sizeof(T) == 1zu);
+template <typename T> concept one_byte_char = (sizeof(T) == 1u);
 
-template <typename T> concept byte_like = (sizeof(T) == 1zu) && (std::same_as<T, char> || std::same_as<T, unsigned char> || std::same_as<T, char8_t> || std::same_as<T, std::byte> || std::same_as<T, uint8_t> || std::same_as<T, int8_t>);
+template <typename T> concept byte_like = (sizeof(T) == 1u) && (std::same_as<T, char> || std::same_as<T, unsigned char> || std::same_as<T, char8_t> || std::same_as<T, std::byte> || std::same_as<T, uint8_t> || std::same_as<T, int8_t>);
 
 template <one_byte_char CharT, size_t N> void string_literal_helper(const CharT (&)[N]);
 
@@ -37,13 +37,13 @@ template <typename It1, typename It2, typename It3> constexpr auto byte_copy(It1
 
 template <std::unsigned_integral T> struct unwrap_bigendian_number {
 	static constexpr size_t bytes = sizeof(T);
-	static constexpr size_t bits = bytes * 8zu;
+	static constexpr size_t bits = bytes * 8u;
 
 	std::span<std::byte, bytes> ref;
 
 	constexpr void operator=(T value) noexcept {
 		[&]<size_t... Idx>(std::index_sequence<Idx...>) {
-			((ref[Idx] = static_cast<std::byte>(value >> ((bits - 8zu) - 8zu * Idx))), ...);
+			((ref[Idx] = static_cast<std::byte>(value >> ((bits - 8u) - 8u * Idx))), ...);
 		}
 		(std::make_index_sequence<bytes>());
 	}
@@ -54,14 +54,14 @@ unwrap_bigendian_number(std::span<std::byte, 4>)->unwrap_bigendian_number<uint32
 
 template <typename T> constexpr auto cast_from_bytes(std::span<const std::byte, sizeof(T)> in) noexcept {
 	return [&]<size_t... Idx>(std::index_sequence<Idx...>) {
-		return ((static_cast<T>(in[Idx]) << ((sizeof(T) - 1zu - Idx) * 8zu)) | ...);
+		return ((static_cast<T>(in[Idx]) << ((sizeof(T) - 1u - Idx) * 8u)) | ...);
 	}
 	(std::make_index_sequence<sizeof(T)>());
 }
 
 template <typename Config> struct internal_hasher {
 	static constexpr auto config = Config{};
-	static constexpr size_t block_size_bytes = config.block_bits / 8zu;
+	static constexpr size_t block_size_bytes = config.block_bits / 8u;
 
 	// internal types
 	using state_value_t = std::remove_cvref_t<decltype(Config::initial_values)>;
@@ -87,7 +87,7 @@ template <typename Config> struct internal_hasher {
 	unsigned block_used;
 
 	// constructors
-	constexpr internal_hasher() noexcept: hash{config.initial_values}, total_length{0zu}, block_used{0u} { }
+	constexpr internal_hasher() noexcept: hash{config.initial_values}, total_length{0u}, block_used{0u} { }
 	constexpr internal_hasher(const internal_hasher &) noexcept = default;
 	constexpr internal_hasher(internal_hasher &&) noexcept = default;
 	constexpr ~internal_hasher() noexcept = default;
@@ -168,7 +168,7 @@ template <typename Config> struct internal_hasher {
 				block_used += static_cast<unsigned>(to_copy.size());
 				return;
 			} else {
-				block_used = 0zu;
+				block_used = 0u;
 			}
 
 			CTHASH_ASSERT(it == remaining_free_space.end());
@@ -192,11 +192,11 @@ template <typename Config> struct internal_hasher {
 		std::fill(it, (block.data() + block.size()), std::byte{0x0u}); // rest is filled with zeros
 
 		// we don't have enough space to write length bits
-		return free_space.size() < (1zu + (config.length_size_bits / 8zu));
+		return free_space.size() < (1u + (config.length_size_bits / 8u));
 	}
 
 	static constexpr void finalize_buffer_by_writing_length(block_value_t & block, length_t total_length) noexcept {
-		unwrap_bigendian_number{std::span(block).template last<sizeof(length_t)>()} = (total_length * 8zu);
+		unwrap_bigendian_number{std::span(block).template last<sizeof(length_t)>()} = (total_length * 8u);
 	}
 
 	constexpr void finalize() noexcept {
@@ -275,7 +275,7 @@ template <typename Config> struct hasher: private internal_hasher<Config> {
 	}
 
 	template <string_literal T> constexpr hasher & update(const T & lit) noexcept {
-		super::update_to_buffer_and_process(std::span(lit, std::size(lit) - 1zu));
+		super::update_to_buffer_and_process(std::span(lit, std::size(lit) - 1u));
 		return *this;
 	}
 
