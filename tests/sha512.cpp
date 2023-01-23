@@ -205,15 +205,6 @@ TEST_CASE("sha512 empty input") {
 	REQUIRE(staging[63] == 0xeabfcd669f8d15a1ull);
 }
 
-TEST_CASE("sha512 (round 1 for empty message)") {
-	const auto block = [] {
-		auto r = array_of_zeros<128>();
-		r[0] = std::byte{0b1000'0000};
-		return r;
-	}();
-	const auto staging = cthash::internal_hasher<cthash::sha512_config>::build_staging(block);
-}
-
 TEST_CASE("sha512 basics", "") {
 	constexpr auto v1 = cthash::sha512{}.update("").final();
 	auto v1r = cthash::sha512{}.update(runtime_pass("")).final();

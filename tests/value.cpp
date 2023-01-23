@@ -19,7 +19,7 @@ TEST_CASE("hash_value (constexpr basics)") {
 	STATIC_REQUIRE(v1 != v2);
 	STATIC_REQUIRE(v2 == v3);
 
-	constexpr auto v4 = "599ba25a0d7c7d671bee93172ca7e272fc87f0c0e02e44df9e9436819067ea28"_hash;
+	[[maybe_unused]] constexpr auto v4 = "599ba25a0d7c7d671bee93172ca7e272fc87f0c0e02e44df9e9436819067ea28"_hash;
 	constexpr auto v5 = "00112233aabbccdd"_hash;
 
 	STATIC_REQUIRE(v5 == v3);
@@ -42,7 +42,7 @@ TEST_CASE("hash_value (runtime basics)") {
 	REQUIRE(v1 != v2);
 	REQUIRE(v2 == v3);
 
-	auto v4 = "599ba25a0d7c7d671bee93172ca7e272fc87f0c0e02e44df9e9436819067ea28"_hash;
+	[[maybe_unused]] auto v4 = "599ba25a0d7c7d671bee93172ca7e272fc87f0c0e02e44df9e9436819067ea28"_hash;
 	auto v5 = "00112233aabbccdd"_hash;
 
 	REQUIRE(v5 == v3);

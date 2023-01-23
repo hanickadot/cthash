@@ -39,7 +39,7 @@ TEST_CASE("sha512/256 (iv)") {
 }
 
 TEST_CASE("sha512/224 (literals)") {
-	const auto v1 = "750d81a39c18d3ce27ff3e5ece30b0088f12d8fd0450fe435326294b"_sha512_224;
+	[[maybe_unused]] const auto v1 = "750d81a39c18d3ce27ff3e5ece30b0088f12d8fd0450fe435326294b"_sha512_224;
 }
 
 TEST_CASE("sha512/224 (basics)") {
