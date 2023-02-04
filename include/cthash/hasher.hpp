@@ -111,47 +111,9 @@ template <typename Config> struct internal_hasher {
 		return w;
 	}
 
-	static constexpr auto choice(state_item_t e, state_item_t f, state_item_t g) noexcept -> state_item_t {
-		return (e bitand f) xor (~e bitand g);
-	}
-
-	static constexpr auto majority(state_item_t a, state_item_t b, state_item_t c) noexcept -> state_item_t {
-		return (a bitand b) xor (a bitand c) xor (b bitand c);
-	}
-
 	static constexpr void rounds(staging_view_t w, state_value_t & state) noexcept {
-		// create copy of internal state
-		auto wvar = state_value_t(state);
-
-		// just give them names
-		auto & a = wvar[0];
-		auto & b = wvar[1];
-		auto & c = wvar[2];
-		auto & d = wvar[3];
-		auto & e = wvar[4];
-		auto & f = wvar[5];
-		auto & g = wvar[6];
-		auto & h = wvar[7];
-
-		for (int i = 0; i != config.rounds_number; ++i) {
-			const state_item_t temp1 = h + config.sum_e(e) + choice(e, f, g) + config.constants[i] + w[i];
-			const state_item_t temp2 = config.sum_a(a) + majority(a, b, c);
-
-			// move around
-			h = g;
-			g = f;
-			f = e;
-			e = d + temp1;
-			d = c;
-			c = b;
-			b = a;
-			a = temp1 + temp2;
-		}
-
-		// add store back
-		for (int i = 0; i != (int)state.size(); ++i) {
-			state[i] += wvar[i];
-		}
+		// run `rounds` from base, but it also must reference full type of hash to find higher layers
+		config.template rounds<config>(w, state);
 	}
 
 	// this implementation works only with input size aligned to bytes (not bits)

@@ -1,11 +1,11 @@
 #ifndef CTHASH_SHA2_SHA256_HPP
 #define CTHASH_SHA2_SHA256_HPP
 
-#include "../hasher.hpp"
+#include "common.hpp"
 
 namespace cthash {
 
-struct sha256_config {
+struct sha256_config: sha2_base {
 	using length_type = uint64_t;
 	static constexpr size_t length_size_bits = 64;
 
