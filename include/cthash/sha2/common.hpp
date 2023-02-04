@@ -36,7 +36,10 @@ struct sha2_base {
 		auto & g = wvar[6];
 		auto & h = wvar[7];
 
-		for (int i = 0; i != Config.rounds_number; ++i) {
+		// number of rounds is same as constants
+		static_assert(StageLength == Config.constants.size());
+
+		for (int i = 0; i != Config.constants.size(); ++i) {
 			const auto temp1 = h + Config.sum_e(e) + choice(e, f, g) + Config.constants[i] + w[i];
 			const auto temp2 = Config.sum_a(a) + majority(a, b, c);
 

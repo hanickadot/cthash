@@ -22,8 +22,6 @@ struct sha512_config: sha2_base {
 	}
 
 	// rounds constants...
-	static constexpr int rounds_number = 80;
-
 	static constexpr auto constants = std::array<uint64_t, 80>{
 		0x428a2f98d728ae22ull, 0x7137449123ef65cdull, 0xb5c0fbcfec4d3b2full, 0xe9b5dba58189dbbcull, 0x3956c25bf348b538ull,
 		0x59f111f1b605d019ull, 0x923f82a4af194f9bull, 0xab1c5ed5da6d8118ull, 0xd807aa98a3030242ull, 0x12835b0145706fbeull,
