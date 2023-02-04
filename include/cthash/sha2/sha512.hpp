@@ -1,5 +1,5 @@
-#ifndef CTHASH_VARIANTS_SHA512_HPP
-#define CTHASH_VARIANTS_SHA512_HPP
+#ifndef CTHASH_SHA2_SHA512_HPP
+#define CTHASH_SHA2_SHA512_HPP
 
 #include "../hasher.hpp"
 

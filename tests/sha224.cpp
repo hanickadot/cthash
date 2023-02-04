@@ -1,5 +1,5 @@
 #include "internal/support.hpp"
-#include <cthash/variants/sha224.hpp>
+#include <cthash/sha2/sha224.hpp>
 #include <catch2/benchmark/catch_benchmark.hpp>
 #include <catch2/catch_test_macros.hpp>
 
