@@ -10,6 +10,8 @@
 namespace cthash {
 
 struct sha2_base {
+	using length_type = uint64_t;
+
 	template <std::unsigned_integral T> static constexpr auto choice(T e, T f, T g) noexcept -> T {
 		return (e bitand f) xor (~e bitand g);
 	}

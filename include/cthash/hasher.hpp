@@ -3,6 +3,7 @@
 
 #include "value.hpp"
 #include "internal/assert.hpp"
+#include "internal/deduce.hpp"
 #include <algorithm>
 #include <array>
 #include <bit>
@@ -62,6 +63,7 @@ template <typename T> constexpr auto cast_from_bytes(std::span<const std::byte, 
 template <typename Config> struct internal_hasher {
 	static constexpr auto config = Config{};
 	static constexpr size_t block_size_bytes = config.block_bits / 8u;
+	static constexpr size_t digest_bytes = internal::digest_bytes_length_of<Config>;
 
 	// internal types
 	using state_value_t = std::remove_cvref_t<decltype(Config::initial_values)>;
@@ -75,7 +77,7 @@ template <typename Config> struct internal_hasher {
 	using staging_value_t = std::array<staging_item_t, staging_size>;
 	using staging_view_t = std::span<const staging_item_t, staging_size>;
 
-	using digest_span_t = std::span<std::byte, config.digest_length>;
+	using digest_span_t = std::span<std::byte, digest_bytes>;
 	using result_t = cthash::tagged_hash_value<Config>;
 	using length_t = typename Config::length_type;
 
@@ -180,21 +182,24 @@ template <typename Config> struct internal_hasher {
 	}
 
 	constexpr void write_result_into(digest_span_t out) noexcept
-	requires(config.values_for_output != 0)
+	requires(digest_bytes % sizeof(state_item_t) == 0u)
 	{
 		// copy result to byte result
-		static_assert(config.values_for_output <= config.initial_values.size());
+		constexpr size_t values_for_output = digest_bytes / sizeof(state_item_t);
+		static_assert(values_for_output <= config.initial_values.size());
 
-		for (int i = 0; i != config.values_for_output; ++i) {
+		for (int i = 0; i != values_for_output; ++i) {
 			unwrap_bigendian_number<state_item_t>{out.subspan(i * sizeof(state_item_t)).template first<sizeof(state_item_t)>()} = hash[i];
 		}
 	}
 
 	constexpr void write_result_into(digest_span_t out) noexcept
-	requires(config.values_for_output == 0)
+	requires(digest_bytes % sizeof(state_item_t) != 0u)
 	{
+		// this is only used when digest doesn't align with output buffer
+
 		// make sure digest size is smaller than hash state
-		static_assert(config.digest_length <= config.initial_values.size() * sizeof(state_item_t));
+		static_assert(digest_bytes <= config.initial_values.size() * sizeof(state_item_t));
 
 		// copy result to byte result
 		std::array<std::byte, sizeof(state_item_t) * config.initial_values.size()> tmp_buffer;
@@ -203,7 +208,7 @@ template <typename Config> struct internal_hasher {
 			unwrap_bigendian_number<state_item_t>{std::span(tmp_buffer).subspan(i * sizeof(state_item_t)).template first<sizeof(state_item_t)>()} = hash[i];
 		}
 
-		std::copy_n(tmp_buffer.data(), config.digest_length, out.data());
+		std::copy_n(tmp_buffer.data(), digest_bytes, out.data());
 	}
 };
 

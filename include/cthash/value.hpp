@@ -2,6 +2,7 @@
 #define CTHASH_VALUE_HPP
 
 #include "internal/algorithm.hpp"
+#include "internal/deduce.hpp"
 #include "internal/fixed-string.hpp"
 #include "internal/hexdec.hpp"
 #include <array>
@@ -11,7 +12,7 @@
 
 namespace cthash {
 
-template <typename> struct identify;
+// hash_value
 
 template <size_t N> struct hash_value: std::array<std::byte, N> {
 	using super = std::array<std::byte, N>;
@@ -37,10 +38,10 @@ template <typename CharT, size_t N> hash_value(const CharT (&)[N]) -> hash_value
 template <typename CharT, size_t N> hash_value(std::span<const CharT, N>) -> hash_value<N / 2u>;
 template <typename CharT, size_t N> hash_value(const internal::fixed_string<CharT, N> &) -> hash_value<N / 2u>;
 
-template <typename Tag> struct tagged_hash_value: hash_value<Tag::digest_length> {
-	static constexpr size_t N = Tag::digest_length;
+template <typename Tag> struct tagged_hash_value: hash_value<internal::digest_bytes_length_of<Tag>> {
+	static constexpr size_t N = internal::digest_bytes_length_of<Tag>;
 
-	using super = hash_value<Tag::digest_length>;
+	using super = hash_value<N>;
 	using super::super;
 	template <typename CharT> explicit constexpr tagged_hash_value(const internal::fixed_string<CharT, N * 2u> & in) noexcept: super{in} { }
 

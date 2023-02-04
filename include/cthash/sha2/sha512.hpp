@@ -6,15 +6,11 @@
 namespace cthash {
 
 struct sha512_config: sha2_base {
-	using length_type = uint64_t;
 	static constexpr size_t length_size_bits = 128;
 
 	static constexpr size_t block_bits = 1024u;
-	static constexpr size_t digest_length = 64u;
 
 	static constexpr auto initial_values = std::array<uint64_t, 8>{0x6a09e667f3bcc908ull, 0xbb67ae8584caa73bull, 0x3c6ef372fe94f82bull, 0xa54ff53a5f1d36f1ull, 0x510e527fade682d1ull, 0x9b05688c2b3e6c1full, 0x1f83d9abfb41bd6bull, 0x5be0cd19137e2179ull};
-
-	static constexpr size_t values_for_output = 8u;
 
 	// staging functions
 	static constexpr auto sigma_0(uint64_t w_15) noexcept -> uint64_t {
@@ -54,6 +50,9 @@ struct sha512_config: sha2_base {
 		return std::rotr(e, 14) xor std::rotr(e, 18) xor std::rotr(e, 41);
 	}
 };
+
+static_assert(not cthash::internal::digest_length_provided<sha512_config>);
+static_assert(cthash::internal::digest_bytes_length_of<sha512_config> == 64u);
 
 using sha512 = hasher<sha512_config>;
 using sha512_value = tagged_hash_value<sha512_config>;
