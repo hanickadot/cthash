@@ -5,7 +5,8 @@
 
 namespace cthash {
 
-struct sha256_config: sha2_base {
+struct sha256_config {
+	using length_type = uint64_t;
 	static constexpr size_t length_size_bits = 64;
 
 	static constexpr size_t block_bits = 512u;
@@ -39,6 +40,11 @@ struct sha256_config: sha2_base {
 
 	static constexpr auto sum_e(uint32_t e) noexcept -> uint32_t {
 		return std::rotr(e, 6u) xor std::rotr(e, 11u) xor std::rotr(e, 25u);
+	}
+
+	// rounds
+	static constexpr void rounds(std::span<const uint32_t, 64> w, std::array<uint32_t, 8> & state) noexcept {
+		return sha2::rounds<sha256_config>(w, state);
 	}
 };
 

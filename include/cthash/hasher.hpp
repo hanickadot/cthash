@@ -114,8 +114,7 @@ template <typename Config> struct internal_hasher {
 	}
 
 	static constexpr void rounds(staging_view_t w, state_value_t & state) noexcept {
-		// run `rounds` from base, but it also must reference full type of hash to find higher layers
-		config.template rounds<config>(w, state);
+		config.rounds(w, state);
 	}
 
 	// this implementation works only with input size aligned to bytes (not bits)
