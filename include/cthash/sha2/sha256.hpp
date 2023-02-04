@@ -14,11 +14,11 @@ struct sha256_config: sha2_base {
 
 	// staging sigmas
 	static constexpr auto sigma_0(uint32_t w_15) noexcept -> uint32_t {
-		return std::rotr(w_15, 7) xor std::rotr(w_15, 18) xor (w_15 >> 3);
+		return std::rotr(w_15, 7u) xor std::rotr(w_15, 18u) xor (w_15 >> 3u);
 	}
 
 	static constexpr auto sigma_1(uint32_t w_2) noexcept -> uint32_t {
-		return std::rotr(w_2, 17) xor std::rotr(w_2, 19) xor (w_2 >> 10);
+		return std::rotr(w_2, 17u) xor std::rotr(w_2, 19u) xor (w_2 >> 10u);
 	}
 
 	// rounds constants...
@@ -34,11 +34,11 @@ struct sha256_config: sha2_base {
 
 	// rounds sums
 	static constexpr auto sum_a(uint32_t a) noexcept -> uint32_t {
-		return std::rotr(a, 2) xor std::rotr(a, 13) xor std::rotr(a, 22);
+		return std::rotr(a, 2u) xor std::rotr(a, 13u) xor std::rotr(a, 22u);
 	}
 
 	static constexpr auto sum_e(uint32_t e) noexcept -> uint32_t {
-		return std::rotr(e, 6) xor std::rotr(e, 11) xor std::rotr(e, 25);
+		return std::rotr(e, 6u) xor std::rotr(e, 11u) xor std::rotr(e, 25u);
 	}
 };
 

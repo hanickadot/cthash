@@ -14,11 +14,11 @@ struct sha512_config: sha2_base {
 
 	// staging functions
 	static constexpr auto sigma_0(uint64_t w_15) noexcept -> uint64_t {
-		return std::rotr(w_15, 1) xor std::rotr(w_15, 8) xor (w_15 >> 7);
+		return std::rotr(w_15, 1u) xor std::rotr(w_15, 8u) xor (w_15 >> 7u);
 	}
 
 	static constexpr auto sigma_1(uint64_t w_2) noexcept -> uint64_t {
-		return std::rotr(w_2, 19) xor std::rotr(w_2, 61) xor (w_2 >> 6);
+		return std::rotr(w_2, 19u) xor std::rotr(w_2, 61u) xor (w_2 >> 6u);
 	}
 
 	// rounds constants...
@@ -41,11 +41,11 @@ struct sha512_config: sha2_base {
 		0x431d67c49c100d4cull, 0x4cc5d4becb3e42b6ull, 0x597f299cfc657e2aull, 0x5fcb6fab3ad6faecull, 0x6c44198c4a475817ull};
 
 	static constexpr auto sum_a(uint64_t a) noexcept -> uint64_t {
-		return std::rotr(a, 28) xor std::rotr(a, 34) xor std::rotr(a, 39);
+		return std::rotr(a, 28u) xor std::rotr(a, 34u) xor std::rotr(a, 39u);
 	}
 
 	static constexpr auto sum_e(uint64_t e) noexcept -> uint64_t {
-		return std::rotr(e, 14) xor std::rotr(e, 18) xor std::rotr(e, 41);
+		return std::rotr(e, 14u) xor std::rotr(e, 18u) xor std::rotr(e, 41u);
 	}
 };
 

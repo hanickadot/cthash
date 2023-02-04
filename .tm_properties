@@ -2,7 +2,7 @@ CLANG_FORMAT_ON_SAVE = true
 
 excludeDirectories = "{$excludeDirectories,build}"
 includeDirectories = "{$includeDirectories}"
-include = "{$include,.gitignore,.gitattributes,.clang-format}"
+include = "{$include,.gitignore,.gitattributes,.clang-format,.github}"
 excludeInFolderSearch = "{$excludeInFolderSearch,build}" 
 includeInFolderSearch = "{$includeInFolderSearch}"
 excludeInFileChooser = "{$excludeInFileChooser}" 
