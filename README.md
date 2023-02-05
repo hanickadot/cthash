@@ -1,6 +1,6 @@
 # CTHASH (Compile Time Hash)
 
-This library is constexpr implementation of SHA-2 family of hashes.
+This library is constexpr implementation of SHA-2 and SHA-3 family of hashes.
 
 ## Supported hash function
 
@@ -11,6 +11,11 @@ The library also implements hash_value literals in namespace `cthash::literals` 
 * SHA-384 (`_sha384`)
 * SHA-512 (`_sha512`)
 * SHA-512/t (only for T dividable by 8) (`_sha512_224`, `_sha512_256`)
+
+* SHA3-224 (`_sha3_224`)
+* SHA3-256 (`_sha3_256`)
+* SHA3-384 (`_sha3_384`)
+* SHA3-512 (`_sha3_512`)
 
 ## Example
 
@@ -24,15 +29,25 @@ constexpr auto my_hash = cthash::simple<cthash::sha256>("hello there!");
 static_assert(my_hash == "c69509590d81db2f37f9d75480c8efedf79a77933db5a8319e52e13bfd9874a3"_sha256);
 ```
 
+```c++
+using namespace cthash::literals;
+
+constexpr auto my_hash = cthash::sha3_256{}.update("hello there!").final();
+// or
+constexpr auto my_hash = cthash::simple<cthash::sha3_256>("hello there!");
+
+static_assert(my_hash == "c7fd85f649fba4bd6fb605038ae8530cf2239152bbbcb9d91d260cc2a90a9fea"_sha3_256);
+```
+
 Also look at [runtime example](example.cpp).
 
 ### Including library
 
-You can include specific hash function only by `#include <cthash/variants/sha256.hpp>` or you can include whole library by `#include <cthash/cthash.hpp>`
+You can include specific hash function only by `#include <cthash/sha2/sha256.hpp>` or you can include whole library by `#include <cthash/cthash.hpp>`
 
 #### Specific include for SHA-512/t
 
-Just include `#include <cthash/variants/sha512/t.hpp>`.
+Just include `#include <cthash/sha2/sha512/t.hpp>`.
 
 ## Implementation note
 

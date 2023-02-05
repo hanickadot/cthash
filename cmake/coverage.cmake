@@ -1,7 +1,7 @@
 if (CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
 	if (NOT LLMV_PROFDATA)
 		set(LLMV_PROFDATA llvm-profdata)
-	endif(())
+	endif()
 	if (NOT LLVM_COV)
 		set(LLMV_COV llvm-cov)
 	endif()
