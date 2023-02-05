@@ -14,11 +14,11 @@ struct sha256_config {
 	static constexpr auto initial_values = std::array<uint32_t, 8>{0x6a09e667ul, 0xbb67ae85ul, 0x3c6ef372ul, 0xa54ff53aul, 0x510e527ful, 0x9b05688cul, 0x1f83d9abul, 0x5be0cd19ul};
 
 	// staging sigmas
-	static constexpr auto sigma_0(uint32_t w_15) noexcept -> uint32_t {
+	[[gnu::always_inline]] static constexpr auto sigma_0(uint32_t w_15) noexcept -> uint32_t {
 		return std::rotr(w_15, 7u) xor std::rotr(w_15, 18u) xor (w_15 >> 3u);
 	}
 
-	static constexpr auto sigma_1(uint32_t w_2) noexcept -> uint32_t {
+	[[gnu::always_inline]] static constexpr auto sigma_1(uint32_t w_2) noexcept -> uint32_t {
 		return std::rotr(w_2, 17u) xor std::rotr(w_2, 19u) xor (w_2 >> 10u);
 	}
 
@@ -34,16 +34,16 @@ struct sha256_config {
 		0x748f82eeul, 0x78a5636ful, 0x84c87814ul, 0x8cc70208ul, 0x90befffaul, 0xa4506cebul, 0xbef9a3f7ul, 0xc67178f2ul};
 
 	// rounds sums
-	static constexpr auto sum_a(uint32_t a) noexcept -> uint32_t {
+	[[gnu::always_inline]] static constexpr auto sum_a(uint32_t a) noexcept -> uint32_t {
 		return std::rotr(a, 2u) xor std::rotr(a, 13u) xor std::rotr(a, 22u);
 	}
 
-	static constexpr auto sum_e(uint32_t e) noexcept -> uint32_t {
+	[[gnu::always_inline]] static constexpr auto sum_e(uint32_t e) noexcept -> uint32_t {
 		return std::rotr(e, 6u) xor std::rotr(e, 11u) xor std::rotr(e, 25u);
 	}
 
 	// rounds
-	static constexpr void rounds(std::span<const uint32_t, 64> w, std::array<uint32_t, 8> & state) noexcept {
+	[[gnu::always_inline]] static constexpr void rounds(std::span<const uint32_t, 64> w, std::array<uint32_t, 8> & state) noexcept {
 		return sha2::rounds<sha256_config>(w, state);
 	}
 };

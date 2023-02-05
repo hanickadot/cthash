@@ -15,6 +15,8 @@ if (CTHASH_TESTS)
 
 	if (CTHASH_COVERAGE)
 		enable_coverage()
+	else()
+		message(STATUS "Test coverage measurement is OFF")
 	endif()
 
 	add_subdirectory(tests)

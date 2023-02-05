@@ -9,16 +9,16 @@
 
 namespace cthash::sha2 {
 
-template <std::unsigned_integral T> constexpr auto choice(T e, T f, T g) noexcept -> T {
+template <std::unsigned_integral T> [[gnu::always_inline]] constexpr auto choice(T e, T f, T g) noexcept -> T {
 	return (e bitand f) xor (~e bitand g);
 }
 
-template <std::unsigned_integral T> constexpr auto majority(T a, T b, T c) noexcept -> T {
+template <std::unsigned_integral T> [[gnu::always_inline]] constexpr auto majority(T a, T b, T c) noexcept -> T {
 	return (a bitand b) xor (a bitand c) xor (b bitand c);
 }
 
 template <typename Config, typename StageT, size_t StageLength, typename StateT, size_t StateLength>
-constexpr void rounds(std::span<const StageT, StageLength> w, std::array<StateT, StateLength> & state) noexcept {
+[[gnu::always_inline]] constexpr void rounds(std::span<const StageT, StageLength> w, std::array<StateT, StateLength> & state) noexcept {
 	using state_t = std::array<StateT, StateLength>;
 
 	// create copy of internal state

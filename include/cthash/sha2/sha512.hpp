@@ -14,11 +14,11 @@ struct sha512_config {
 	static constexpr auto initial_values = std::array<uint64_t, 8>{0x6a09e667f3bcc908ull, 0xbb67ae8584caa73bull, 0x3c6ef372fe94f82bull, 0xa54ff53a5f1d36f1ull, 0x510e527fade682d1ull, 0x9b05688c2b3e6c1full, 0x1f83d9abfb41bd6bull, 0x5be0cd19137e2179ull};
 
 	// staging functions
-	static constexpr auto sigma_0(uint64_t w_15) noexcept -> uint64_t {
+	[[gnu::always_inline]] static constexpr auto sigma_0(uint64_t w_15) noexcept -> uint64_t {
 		return std::rotr(w_15, 1u) xor std::rotr(w_15, 8u) xor (w_15 >> 7u);
 	}
 
-	static constexpr auto sigma_1(uint64_t w_2) noexcept -> uint64_t {
+	[[gnu::always_inline]] static constexpr auto sigma_1(uint64_t w_2) noexcept -> uint64_t {
 		return std::rotr(w_2, 19u) xor std::rotr(w_2, 61u) xor (w_2 >> 6u);
 	}
 
@@ -41,16 +41,16 @@ struct sha512_config {
 		0x113f9804bef90daeull, 0x1b710b35131c471bull, 0x28db77f523047d84ull, 0x32caab7b40c72493ull, 0x3c9ebe0a15c9bebcull,
 		0x431d67c49c100d4cull, 0x4cc5d4becb3e42b6ull, 0x597f299cfc657e2aull, 0x5fcb6fab3ad6faecull, 0x6c44198c4a475817ull};
 
-	static constexpr auto sum_a(uint64_t a) noexcept -> uint64_t {
+	[[gnu::always_inline]] static constexpr auto sum_a(uint64_t a) noexcept -> uint64_t {
 		return std::rotr(a, 28u) xor std::rotr(a, 34u) xor std::rotr(a, 39u);
 	}
 
-	static constexpr auto sum_e(uint64_t e) noexcept -> uint64_t {
+	[[gnu::always_inline]] static constexpr auto sum_e(uint64_t e) noexcept -> uint64_t {
 		return std::rotr(e, 14u) xor std::rotr(e, 18u) xor std::rotr(e, 41u);
 	}
 
 	// rounds
-	static constexpr void rounds(std::span<const uint64_t, 80> w, std::array<uint64_t, 8> & state) noexcept {
+	[[gnu::always_inline]] static constexpr void rounds(std::span<const uint64_t, 80> w, std::array<uint64_t, 8> & state) noexcept {
 		return sha2::rounds<sha512_config>(w, state);
 	}
 };

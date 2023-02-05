@@ -60,6 +60,13 @@ template <typename T> constexpr auto cast_from_bytes(std::span<const std::byte, 
 	(std::make_index_sequence<sizeof(T)>());
 }
 
+template <typename T, byte_like Byte> constexpr auto cast_from_bytes(std::span<const Byte, sizeof(T)> in) noexcept {
+	return [&]<size_t... Idx>(std::index_sequence<Idx...>) {
+		return ((static_cast<T>(in[Idx]) << ((sizeof(T) - 1u - Idx) * 8u)) | ...);
+	}
+	(std::make_index_sequence<sizeof(T)>());
+}
+
 template <typename Config> struct internal_hasher {
 	static constexpr auto config = Config{};
 	static constexpr size_t block_size_bytes = config.block_bits / 8u;
@@ -95,7 +102,7 @@ template <typename Config> struct internal_hasher {
 	constexpr ~internal_hasher() noexcept = default;
 
 	// take buffer and build staging
-	static constexpr auto build_staging(block_view_t chunk) noexcept -> staging_value_t {
+	template <byte_like Byte> [[gnu::always_inline]] static constexpr auto build_staging(std::span<const Byte, block_size_bytes> chunk) noexcept -> staging_value_t {
 		staging_value_t w;
 
 		constexpr auto first_part_size = block_size_bytes / sizeof(staging_item_t);
@@ -113,40 +120,68 @@ template <typename Config> struct internal_hasher {
 		return w;
 	}
 
-	static constexpr void rounds(staging_view_t w, state_value_t & state) noexcept {
+	[[gnu::always_inline]] static constexpr auto build_staging(std::span<const std::byte, block_size_bytes> chunk) noexcept -> staging_value_t {
+		return build_staging<std::byte>(chunk);
+	}
+
+	[[gnu::always_inline]] static constexpr void rounds(staging_view_t w, state_value_t & state) noexcept {
 		config.rounds(w, state);
 	}
 
 	// this implementation works only with input size aligned to bytes (not bits)
-	template <byte_like T> constexpr void update_to_buffer_and_process(std::span<const T> in) noexcept {
-		for (;;) {
+	template <byte_like T> [[gnu::always_inline]] constexpr void update_to_buffer_and_process(std::span<const T> in) noexcept {
+		// if block is not used, we can build staging directly
+		if (block_used) {
 			const auto remaining_free_space = std::span<std::byte, block_size_bytes>(block).subspan(block_used);
 			const auto to_copy = in.first(std::min(in.size(), remaining_free_space.size()));
 
 			const auto it = byte_copy(to_copy.begin(), to_copy.end(), remaining_free_space.begin());
-
 			total_length += to_copy.size();
 
+			// we didn't fill the block
 			if (it != remaining_free_space.end()) {
+				CTHASH_ASSERT(to_copy.size() == in.size());
 				block_used += static_cast<unsigned>(to_copy.size());
 				return;
 			} else {
 				block_used = 0u;
 			}
 
-			CTHASH_ASSERT(it == remaining_free_space.end());
-
 			// we have block!
 			const staging_value_t w = build_staging(block);
 			rounds(w, hash);
 
-			// continue with the next block (if there is any)
+			// remove part we processed
 			in = in.subspan(to_copy.size());
-			// TODO maybe avoid copying the data and process it directly over span
+		}
+
+		// do the work over blocks without copy
+		if (not block_used) {
+			while (in.size() >= block_size_bytes) {
+				const auto local_block = in.template first<block_size_bytes>();
+				total_length += block_size_bytes;
+
+				const staging_value_t w = build_staging<T>(local_block);
+				rounds(w, hash);
+
+				// remove part we processed
+				in = in.subspan(block_size_bytes);
+			}
+		}
+
+		// remainder is put onto temporary block
+		if (not in.empty()) {
+			CTHASH_ASSERT(block_used == 0u);
+			CTHASH_ASSERT(in.size() < block_size_bytes);
+
+			// copy it to block and let it stay there
+			byte_copy(in.begin(), in.end(), block.begin());
+			block_used = static_cast<unsigned>(in.size());
+			total_length += block_used;
 		}
 	}
 
-	static constexpr bool finalize_buffer(block_value_t & block, size_t block_used) noexcept {
+	[[gnu::always_inline]] static constexpr bool finalize_buffer(block_value_t & block, size_t block_used) noexcept {
 		CTHASH_ASSERT(block_used < block.size());
 		const auto free_space = std::span(block).subspan(block_used);
 
@@ -158,11 +193,11 @@ template <typename Config> struct internal_hasher {
 		return free_space.size() < (1u + (config.length_size_bits / 8u));
 	}
 
-	static constexpr void finalize_buffer_by_writing_length(block_value_t & block, length_t total_length) noexcept {
+	[[gnu::always_inline]] static constexpr void finalize_buffer_by_writing_length(block_value_t & block, length_t total_length) noexcept {
 		unwrap_bigendian_number{std::span(block).template last<sizeof(length_t)>()} = (total_length * 8u);
 	}
 
-	constexpr void finalize() noexcept {
+	[[gnu::always_inline]] constexpr void finalize() noexcept {
 		if (finalize_buffer(block, block_used)) {
 			// we didn't have enough space, we need to process block
 			const staging_value_t w = build_staging(block);
@@ -180,7 +215,7 @@ template <typename Config> struct internal_hasher {
 		rounds(w, hash);
 	}
 
-	constexpr void write_result_into(digest_span_t out) noexcept
+	[[gnu::always_inline]] constexpr void write_result_into(digest_span_t out) noexcept
 	requires(digest_bytes % sizeof(state_item_t) == 0u)
 	{
 		// copy result to byte result
@@ -192,7 +227,7 @@ template <typename Config> struct internal_hasher {
 		}
 	}
 
-	constexpr void write_result_into(digest_span_t out) noexcept
+	[[gnu::always_inline]] constexpr void write_result_into(digest_span_t out) noexcept
 	requires(digest_bytes % sizeof(state_item_t) != 0u)
 	{
 		// this is only used when digest doesn't align with output buffer
