@@ -1,4 +1,4 @@
-#include "internal/support.hpp"
+#include "../internal/support.hpp"
 #include <cthash/sha2/sha384.hpp>
 #include <catch2/benchmark/catch_benchmark.hpp>
 #include <catch2/catch_test_macros.hpp>

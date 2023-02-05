@@ -3,6 +3,7 @@
 
 #include "value.hpp"
 #include "internal/assert.hpp"
+#include "internal/deduce.hpp"
 #include <algorithm>
 #include <array>
 #include <bit>
@@ -59,9 +60,17 @@ template <typename T> constexpr auto cast_from_bytes(std::span<const std::byte, 
 	(std::make_index_sequence<sizeof(T)>());
 }
 
+template <typename T, byte_like Byte> constexpr auto cast_from_bytes(std::span<const Byte, sizeof(T)> in) noexcept {
+	return [&]<size_t... Idx>(std::index_sequence<Idx...>) {
+		return ((static_cast<T>(in[Idx]) << ((sizeof(T) - 1u - Idx) * 8u)) | ...);
+	}
+	(std::make_index_sequence<sizeof(T)>());
+}
+
 template <typename Config> struct internal_hasher {
 	static constexpr auto config = Config{};
 	static constexpr size_t block_size_bytes = config.block_bits / 8u;
+	static constexpr size_t digest_bytes = internal::digest_bytes_length_of<Config>;
 
 	// internal types
 	using state_value_t = std::remove_cvref_t<decltype(Config::initial_values)>;
@@ -75,7 +84,7 @@ template <typename Config> struct internal_hasher {
 	using staging_value_t = std::array<staging_item_t, staging_size>;
 	using staging_view_t = std::span<const staging_item_t, staging_size>;
 
-	using digest_span_t = std::span<std::byte, config.digest_length>;
+	using digest_span_t = std::span<std::byte, digest_bytes>;
 	using result_t = cthash::tagged_hash_value<Config>;
 	using length_t = typename Config::length_type;
 
@@ -93,7 +102,7 @@ template <typename Config> struct internal_hasher {
 	constexpr ~internal_hasher() noexcept = default;
 
 	// take buffer and build staging
-	static constexpr auto build_staging(block_view_t chunk) noexcept -> staging_value_t {
+	template <byte_like Byte> [[gnu::always_inline]] static constexpr auto build_staging(std::span<const Byte, block_size_bytes> chunk) noexcept -> staging_value_t {
 		staging_value_t w;
 
 		constexpr auto first_part_size = block_size_bytes / sizeof(staging_item_t);
@@ -111,79 +120,68 @@ template <typename Config> struct internal_hasher {
 		return w;
 	}
 
-	static constexpr auto choice(state_item_t e, state_item_t f, state_item_t g) noexcept -> state_item_t {
-		return (e bitand f) xor (~e bitand g);
+	[[gnu::always_inline]] static constexpr auto build_staging(std::span<const std::byte, block_size_bytes> chunk) noexcept -> staging_value_t {
+		return build_staging<std::byte>(chunk);
 	}
 
-	static constexpr auto majority(state_item_t a, state_item_t b, state_item_t c) noexcept -> state_item_t {
-		return (a bitand b) xor (a bitand c) xor (b bitand c);
-	}
-
-	static constexpr void rounds(staging_view_t w, state_value_t & state) noexcept {
-		// create copy of internal state
-		auto wvar = state_value_t(state);
-
-		// just give them names
-		auto & a = wvar[0];
-		auto & b = wvar[1];
-		auto & c = wvar[2];
-		auto & d = wvar[3];
-		auto & e = wvar[4];
-		auto & f = wvar[5];
-		auto & g = wvar[6];
-		auto & h = wvar[7];
-
-		for (int i = 0; i != config.rounds_number; ++i) {
-			const state_item_t temp1 = h + config.sum_e(e) + choice(e, f, g) + config.constants[i] + w[i];
-			const state_item_t temp2 = config.sum_a(a) + majority(a, b, c);
-
-			// move around
-			h = g;
-			g = f;
-			f = e;
-			e = d + temp1;
-			d = c;
-			c = b;
-			b = a;
-			a = temp1 + temp2;
-		}
-
-		// add store back
-		for (int i = 0; i != (int)state.size(); ++i) {
-			state[i] += wvar[i];
-		}
+	[[gnu::always_inline]] static constexpr void rounds(staging_view_t w, state_value_t & state) noexcept {
+		config.rounds(w, state);
 	}
 
 	// this implementation works only with input size aligned to bytes (not bits)
-	template <byte_like T> constexpr void update_to_buffer_and_process(std::span<const T> in) noexcept {
-		for (;;) {
+	template <byte_like T> [[gnu::always_inline]] constexpr void update_to_buffer_and_process(std::span<const T> in) noexcept {
+		// if block is not used, we can build staging directly
+		if (block_used) {
 			const auto remaining_free_space = std::span<std::byte, block_size_bytes>(block).subspan(block_used);
 			const auto to_copy = in.first(std::min(in.size(), remaining_free_space.size()));
 
 			const auto it = byte_copy(to_copy.begin(), to_copy.end(), remaining_free_space.begin());
-
 			total_length += to_copy.size();
 
+			// we didn't fill the block
 			if (it != remaining_free_space.end()) {
+				CTHASH_ASSERT(to_copy.size() == in.size());
 				block_used += static_cast<unsigned>(to_copy.size());
 				return;
 			} else {
 				block_used = 0u;
 			}
 
-			CTHASH_ASSERT(it == remaining_free_space.end());
-
 			// we have block!
 			const staging_value_t w = build_staging(block);
 			rounds(w, hash);
 
-			// continue with the next block (if there is any)
+			// remove part we processed
 			in = in.subspan(to_copy.size());
-			// TODO maybe avoid copying the data and process it directly over span
+		}
+
+		// do the work over blocks without copy
+		if (not block_used) {
+			while (in.size() >= block_size_bytes) {
+				const auto local_block = in.template first<block_size_bytes>();
+				total_length += block_size_bytes;
+
+				const staging_value_t w = build_staging<T>(local_block);
+				rounds(w, hash);
+
+				// remove part we processed
+				in = in.subspan(block_size_bytes);
+			}
+		}
+
+		// remainder is put onto temporary block
+		if (not in.empty()) {
+			CTHASH_ASSERT(block_used == 0u);
+			CTHASH_ASSERT(in.size() < block_size_bytes);
+
+			// copy it to block and let it stay there
+			byte_copy(in.begin(), in.end(), block.begin());
+			block_used = static_cast<unsigned>(in.size());
+			total_length += block_used;
 		}
 	}
 
-	static constexpr bool finalize_buffer(block_value_t & block, size_t block_used) noexcept {
+	[[gnu::always_inline]] static constexpr bool finalize_buffer(block_value_t & block, size_t block_used) noexcept {
 		CTHASH_ASSERT(block_used < block.size());
 		const auto free_space = std::span(block).subspan(block_used);
 
@@ -195,11 +193,11 @@ template <typename Config> struct internal_hasher {
 		return free_space.size() < (1u + (config.length_size_bits / 8u));
 	}
 
-	static constexpr void finalize_buffer_by_writing_length(block_value_t & block, length_t total_length) noexcept {
+	[[gnu::always_inline]] static constexpr void finalize_buffer_by_writing_length(block_value_t & block, length_t total_length) noexcept {
 		unwrap_bigendian_number{std::span(block).template last<sizeof(length_t)>()} = (total_length * 8u);
 	}
 
-	constexpr void finalize() noexcept {
+	[[gnu::always_inline]] constexpr void finalize() noexcept {
 		if (finalize_buffer(block, block_used)) {
 			// we didn't have enough space, we need to process block
 			const staging_value_t w = build_staging(block);
@@ -217,22 +215,25 @@ template <typename Config> struct internal_hasher {
 		rounds(w, hash);
 	}
 
-	constexpr void write_result_into(digest_span_t out) noexcept
-	requires(config.values_for_output != 0)
+	[[gnu::always_inline]] constexpr void write_result_into(digest_span_t out) noexcept
+	requires(digest_bytes % sizeof(state_item_t) == 0u)
 	{
 		// copy result to byte result
-		static_assert(config.values_for_output <= config.initial_values.size());
+		constexpr size_t values_for_output = digest_bytes / sizeof(state_item_t);
+		static_assert(values_for_output <= config.initial_values.size());
 
-		for (int i = 0; i != config.values_for_output; ++i) {
+		for (int i = 0; i != values_for_output; ++i) {
 			unwrap_bigendian_number<state_item_t>{out.subspan(i * sizeof(state_item_t)).template first<sizeof(state_item_t)>()} = hash[i];
 		}
 	}
 
-	constexpr void write_result_into(digest_span_t out) noexcept
-	requires(config.values_for_output == 0)
+	[[gnu::always_inline]] constexpr void write_result_into(digest_span_t out) noexcept
+	requires(digest_bytes % sizeof(state_item_t) != 0u)
 	{
+		// this is only used when digest doesn't align with output buffer
+
 		// make sure digest size is smaller than hash state
-		static_assert(config.digest_length <= config.initial_values.size() * sizeof(state_item_t));
+		static_assert(digest_bytes <= config.initial_values.size() * sizeof(state_item_t));
 
 		// copy result to byte result
 		std::array<std::byte, sizeof(state_item_t) * config.initial_values.size()> tmp_buffer;
@@ -241,7 +242,7 @@ template <typename Config> struct internal_hasher {
 			unwrap_bigendian_number<state_item_t>{std::span(tmp_buffer).subspan(i * sizeof(state_item_t)).template first<sizeof(state_item_t)>()} = hash[i];
 		}
 
-		std::copy_n(tmp_buffer.data(), config.digest_length, out.data());
+		std::copy_n(tmp_buffer.data(), digest_bytes, out.data());
 	}
 };
 

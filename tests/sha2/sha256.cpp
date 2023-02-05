@@ -1,4 +1,4 @@
-#include "internal/support.hpp"
+#include "../internal/support.hpp"
 #include <cthash/sha2/sha256.hpp>
 #include <catch2/benchmark/catch_benchmark.hpp>
 #include <catch2/catch_test_macros.hpp>
@@ -118,34 +118,6 @@ TEST_CASE("sha256 basics (constexpr and runtime)") {
 	auto v5r = cthash::sha256{}.update(runtime_pass(array_of_zeros<128>())).final();
 	REQUIRE(v5 == "38723a2e5e8a17aa7950dc008209944e898f69a7bd10a23c839d341e935fd5ca"_sha256);
 	REQUIRE(v5 == v5r);
-}
-
-TEST_CASE("sha256 measurements") {
-	std::array<std::byte, 128> input{};
-
-	for (int i = 0; i != (int)input.size(); ++i) {
-		input[i] = static_cast<std::byte>(i);
-	}
-
-	BENCHMARK("16 byte input") {
-		return cthash::sha256{}.update(std::span(runtime_pass(input)).first(16)).final();
-	};
-
-	BENCHMARK("32 byte input") {
-		return cthash::sha256{}.update(std::span(runtime_pass(input)).first(32)).final();
-	};
-
-	BENCHMARK("48 byte input") {
-		return cthash::sha256{}.update(std::span(runtime_pass(input)).first(48)).final();
-	};
-
-	BENCHMARK("64 byte input") {
-		return cthash::sha256{}.update(std::span(runtime_pass(input)).first(64)).final();
-	};
-
-	BENCHMARK("96 byte input") {
-		return cthash::sha256{}.update(std::span(runtime_pass(input)).first(96)).final();
-	};
 }
 
 TEST_CASE("sha256 long hash over 512MB", "[.long]") {

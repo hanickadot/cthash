@@ -1,7 +1,7 @@
 #ifndef CTHASH_SHA2_SHA512_HPP
 #define CTHASH_SHA2_SHA512_HPP
 
-#include "../hasher.hpp"
+#include "common.hpp"
 
 namespace cthash {
 
@@ -10,24 +10,19 @@ struct sha512_config {
 	static constexpr size_t length_size_bits = 128;
 
 	static constexpr size_t block_bits = 1024u;
-	static constexpr size_t digest_length = 64u;
 
 	static constexpr auto initial_values = std::array<uint64_t, 8>{0x6a09e667f3bcc908ull, 0xbb67ae8584caa73bull, 0x3c6ef372fe94f82bull, 0xa54ff53a5f1d36f1ull, 0x510e527fade682d1ull, 0x9b05688c2b3e6c1full, 0x1f83d9abfb41bd6bull, 0x5be0cd19137e2179ull};
 
-	static constexpr size_t values_for_output = 8u;
-
 	// staging functions
-	static constexpr auto sigma_0(uint64_t w_15) noexcept -> uint64_t {
-		return std::rotr(w_15, 1) xor std::rotr(w_15, 8) xor (w_15 >> 7);
+	[[gnu::always_inline]] static constexpr auto sigma_0(uint64_t w_15) noexcept -> uint64_t {
+		return std::rotr(w_15, 1u) xor std::rotr(w_15, 8u) xor (w_15 >> 7u);
 	}
 
-	static constexpr auto sigma_1(uint64_t w_2) noexcept -> uint64_t {
-		return std::rotr(w_2, 19) xor std::rotr(w_2, 61) xor (w_2 >> 6);
+	[[gnu::always_inline]] static constexpr auto sigma_1(uint64_t w_2) noexcept -> uint64_t {
+		return std::rotr(w_2, 19u) xor std::rotr(w_2, 61u) xor (w_2 >> 6u);
 	}
 
 	// rounds constants...
-	static constexpr int rounds_number = 80;
-
 	static constexpr auto constants = std::array<uint64_t, 80>{
 		0x428a2f98d728ae22ull, 0x7137449123ef65cdull, 0xb5c0fbcfec4d3b2full, 0xe9b5dba58189dbbcull, 0x3956c25bf348b538ull,
 		0x59f111f1b605d019ull, 0x923f82a4af194f9bull, 0xab1c5ed5da6d8118ull, 0xd807aa98a3030242ull, 0x12835b0145706fbeull,
@@ -46,14 +41,22 @@ struct sha512_config {
 		0x113f9804bef90daeull, 0x1b710b35131c471bull, 0x28db77f523047d84ull, 0x32caab7b40c72493ull, 0x3c9ebe0a15c9bebcull,
 		0x431d67c49c100d4cull, 0x4cc5d4becb3e42b6ull, 0x597f299cfc657e2aull, 0x5fcb6fab3ad6faecull, 0x6c44198c4a475817ull};
 
-	static constexpr auto sum_a(uint64_t a) noexcept -> uint64_t {
-		return std::rotr(a, 28) xor std::rotr(a, 34) xor std::rotr(a, 39);
+	[[gnu::always_inline]] static constexpr auto sum_a(uint64_t a) noexcept -> uint64_t {
+		return std::rotr(a, 28u) xor std::rotr(a, 34u) xor std::rotr(a, 39u);
 	}
 
-	static constexpr auto sum_e(uint64_t e) noexcept -> uint64_t {
-		return std::rotr(e, 14) xor std::rotr(e, 18) xor std::rotr(e, 41);
+	[[gnu::always_inline]] static constexpr auto sum_e(uint64_t e) noexcept -> uint64_t {
+		return std::rotr(e, 14u) xor std::rotr(e, 18u) xor std::rotr(e, 41u);
+	}
+
+	// rounds
+	[[gnu::always_inline]] static constexpr void rounds(std::span<const uint64_t, 80> w, std::array<uint64_t, 8> & state) noexcept {
+		return sha2::rounds<sha512_config>(w, state);
 	}
 };
+
+static_assert(not cthash::internal::digest_length_provided<sha512_config>);
+static_assert(cthash::internal::digest_bytes_length_of<sha512_config> == 64u);
 
 using sha512 = hasher<sha512_config>;
 using sha512_value = tagged_hash_value<sha512_config>;

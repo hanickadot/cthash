@@ -62,9 +62,12 @@ template <unsigned T> struct sha512t_config: sha512_config {
 	static constexpr size_t digest_length = T / 8u;
 
 	static constexpr std::array<uint64_t, 8> initial_values = iv_for_sha512t<T>;
-
-	static constexpr size_t values_for_output = 0u;
 };
+
+static_assert(cthash::internal::digest_length_provided<sha512t_config<224>>);
+static_assert(cthash::internal::digest_length_provided<sha512t_config<256>>);
+static_assert(cthash::internal::digest_bytes_length_of<sha512t_config<224>> == 28u);
+static_assert(cthash::internal::digest_bytes_length_of<sha512t_config<256>> == 32u);
 
 template <unsigned T> using sha512t = hasher<sha512t_config<T>>;
 template <unsigned T> using sha512t_value = tagged_hash_value<sha512t_config<T>>;
