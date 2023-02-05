@@ -24,6 +24,12 @@ endif()
 
 add_subdirectory(include)
 
+option(CTHASH_EXAMPLES "Build CTHASH examples" ON)
+
+if (CTHASH_EXAMPLES)
+	add_subdirectory(examples)
+endif()
+
 add_executable(example example.cpp)
 target_link_libraries(example cthash)
 

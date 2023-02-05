@@ -58,7 +58,7 @@ template <size_t N> struct block_buffer {
 		used_bytes += usable.size();
 	}
 
-	template <byte_like T> void copy_into_empty_buffer(std::span<const T> input) noexcept {
+	template <byte_like T> constexpr void copy_into_empty_buffer(std::span<const T> input) noexcept {
 		CTHASH_ASSERT(empty());
 		CTHASH_ASSERT(input.size() <= N);
 		byte_copy(input.begin(), input.end(), storage.begin());
