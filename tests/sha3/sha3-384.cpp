@@ -16,6 +16,11 @@ TEST_CASE("sha3-384 test strings") {
 		REQUIRE(r0 == "0c63a75b845e4f7d01107d852e4c2485c51a50aaaa94fc61995e71bbee983a2ac3713831264adb47fb6bd1e058d5f004"_sha3_384);
 	}
 
+	SECTION("empty with bytes") {
+		const auto r0 = cthash::sha3_384().update(std::span<const std::byte>()).final();
+		REQUIRE(r0 == "0c63a75b845e4f7d01107d852e4c2485c51a50aaaa94fc61995e71bbee983a2ac3713831264adb47fb6bd1e058d5f004"_sha3_384);
+	}
+
 	SECTION("test") {
 		const auto r0 = cthash::sha3_384().update("test").final();
 		REQUIRE(r0 == "e516dabb23b6e30026863543282780a3ae0dccf05551cf0295178d7ff0f1b41eecb9db3ff219007c4e097260d58621bd"_sha3_384);
