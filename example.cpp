@@ -14,4 +14,9 @@ int main(int argc, char ** argv) {
 	std::cout << "    sha512 = " << cthash::sha512{}.update(in).final() << "\n";
 	std::cout << "sha512/224 = " << cthash::sha512t<224>{}.update(in).final() << "\n";
 	std::cout << "sha512/256 = " << cthash::sha512t<256>{}.update(in).final() << "\n";
+
+	std::cout << "  sha3-224 = " << cthash::sha3_224{}.update(in).final() << "\n";
+	std::cout << "  sha3-256 = " << cthash::sha3_256{}.update(in).final() << "\n";
+	std::cout << "  sha3-384 = " << cthash::sha3_384{}.update(in).final() << "\n";
+	std::cout << "  sha3-512 = " << cthash::sha3_512{}.update(in).final() << "\n";
 }

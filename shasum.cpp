@@ -40,6 +40,7 @@ struct mapped_file {
 int main(int argc, char ** argv) {
 	if (argc < 3) {
 		std::cerr << argv[0] << " hash file\n";
+		std::cerr << "hash is one of: sha-224, sha-256, sha-384, sha-512, sha-512/223, sha-512/256, sha3-224, sha3-256, sha3-384, sha3-512\n";
 		return 1;
 	}
 
@@ -53,18 +54,26 @@ int main(int argc, char ** argv) {
 
 	const auto start = std::chrono::high_resolution_clock::now();
 
-	if (h == "224") {
+	if (h == "sha-224") {
 		std::cout << cthash::sha224{}.update(f.get_span()).final() << "\n";
-	} else if (h == "256") {
+	} else if (h == "sha-256") {
 		std::cout << cthash::sha256{}.update(f.get_span()).final() << "\n";
-	} else if (h == "384") {
+	} else if (h == "sha-384") {
 		std::cout << cthash::sha384{}.update(f.get_span()).final() << "\n";
-	} else if (h == "512") {
+	} else if (h == "sha-512") {
 		std::cout << cthash::sha512{}.update(f.get_span()).final() << "\n";
-	} else if (h == "512224") {
+	} else if (h == "sha-512/224") {
 		std::cout << cthash::sha512t<224>{}.update(f.get_span()).final() << "\n";
-	} else if (h == "512256") {
+	} else if (h == "sha-512/256") {
 		std::cout << cthash::sha512t<256>{}.update(f.get_span()).final() << "\n";
+	} else if (h == "sha3-224") {
+		std::cout << cthash::sha3_224{}.update(f.get_span()).final() << "\n";
+	} else if (h == "sha3-256") {
+		std::cout << cthash::sha3_256{}.update(f.get_span()).final() << "\n";
+	} else if (h == "sha3-384") {
+		std::cout << cthash::sha3_384{}.update(f.get_span()).final() << "\n";
+	} else if (h == "sha3-512") {
+		std::cout << cthash::sha3_512{}.update(f.get_span()).final() << "\n";
 	} else {
 		std::cerr << "unknown hash function!\n";
 		return 1;
