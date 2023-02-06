@@ -10,10 +10,13 @@ int main() {
 	constexpr cthash::shake128_value<512> calculated_512bit = cthash::shake128().update("hello there!").final<512>();
 	constexpr cthash::shake128_value<1024> calculated_1024bit = cthash::shake128().update("hello there!").final<1024>();
 	constexpr cthash::shake128_value<2048> calculated_2048bit = cthash::shake128().update("hello there!").final<2048>();
+	constexpr cthash::shake128_value<4096> calculated_4096bit = cthash::shake128().update("hello there!").final<4096>();
 
+	// it only checks common length of both operands
 	static_assert(expected == calculated_32bit);
 	static_assert(expected == calculated_128bit);
 	static_assert(expected == calculated_512bit);
 	static_assert(expected == calculated_1024bit);
 	static_assert(expected == calculated_2048bit);
+	static_assert(expected == calculated_4096bit);
 }
