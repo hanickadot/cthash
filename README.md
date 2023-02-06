@@ -4,7 +4,7 @@ This library is constexpr implementation of SHA-2 and SHA-3 family of hashes.
 
 ## Supported hash function
 
-The library also implements hash_value literals in namespace `cthash::literals` (suffixes in parenthesis for each hash function type).
+The library also implements hash_value literals in namespace `cthash::literals` (suffixes in parenthesis for each hash function type). This literal types doesn't compute hash value of its content, but are merely strong typed value from specified hash algorithm (eg. so you won't mix up SHA-256 and SHA3-256 results).
 
 * SHA-224 (`_sha224`)
 * SHA-256 (`_sha256`)
