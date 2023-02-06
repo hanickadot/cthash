@@ -3,9 +3,8 @@
 
 #include "keccak.hpp"
 #include "../hasher.hpp"
+#include "../internal/bit.hpp"
 #include "../value.hpp"
-#include <iomanip>
-#include <iostream>
 
 namespace cthash {
 
@@ -66,22 +65,19 @@ template <size_t N> struct block_buffer {
 	}
 };
 
-template <typename T> constexpr auto cast_from_le_bytes(std::span<const std::byte, sizeof(T)> in) noexcept {
+template <typename T, byte_like Byte> constexpr auto cast_from_le_bytes(std::span<const Byte, sizeof(T)> in) noexcept {
 	if (std::is_constant_evaluated()) {
 		return [&]<size_t... Idx>(std::index_sequence<Idx...>) {
 			return ((static_cast<T>(in[Idx]) << (Idx * 8u)) | ...);
 		}
 		(std::make_index_sequence<sizeof(T)>());
 	} else {
-		return std::bit_cast<T>(in.data());
+		if constexpr (std::endian::native == std::endian::big) {
+			return internal::byteswap(*std::bit_cast<const T *>(in.data()));
+		} else {
+			return *std::bit_cast<const T *>(in.data());
+		}
 	}
-}
-
-template <typename T, byte_like Byte> constexpr auto cast_from_le_bytes(std::span<const Byte, sizeof(T)> in) noexcept {
-	return [&]<size_t... Idx>(std::index_sequence<Idx...>) {
-		return ((static_cast<T>(in[Idx]) << (Idx * 8u)) | ...);
-	}
-	(std::make_index_sequence<sizeof(T)>());
 }
 
 template <std::unsigned_integral T> struct unwrap_littleendian_number {

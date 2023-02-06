@@ -3,10 +3,10 @@
 
 #include "value.hpp"
 #include "internal/assert.hpp"
+#include "internal/bit.hpp"
 #include "internal/deduce.hpp"
 #include <algorithm>
 #include <array>
-#include <bit>
 #include <span>
 #include <cassert>
 #include <concepts>
@@ -53,18 +53,19 @@ template <std::unsigned_integral T> struct unwrap_bigendian_number {
 unwrap_bigendian_number(std::span<std::byte, 8>)->unwrap_bigendian_number<uint64_t>;
 unwrap_bigendian_number(std::span<std::byte, 4>)->unwrap_bigendian_number<uint32_t>;
 
-template <typename T> constexpr auto cast_from_bytes(std::span<const std::byte, sizeof(T)> in) noexcept {
-	return [&]<size_t... Idx>(std::index_sequence<Idx...>) {
-		return ((static_cast<T>(in[Idx]) << ((sizeof(T) - 1u - Idx) * 8u)) | ...);
-	}
-	(std::make_index_sequence<sizeof(T)>());
-}
-
 template <typename T, byte_like Byte> constexpr auto cast_from_bytes(std::span<const Byte, sizeof(T)> in) noexcept {
-	return [&]<size_t... Idx>(std::index_sequence<Idx...>) {
-		return ((static_cast<T>(in[Idx]) << ((sizeof(T) - 1u - Idx) * 8u)) | ...);
+	if (std::is_constant_evaluated()) {
+		return [&]<size_t... Idx>(std::index_sequence<Idx...>) {
+			return ((static_cast<T>(in[Idx]) << ((sizeof(T) - 1u - Idx) * 8u)) | ...);
+		}
+		(std::make_index_sequence<sizeof(T)>());
+	} else {
+		if constexpr (std::endian::native == std::endian::little) {
+			return internal::byteswap(*std::bit_cast<const T *>(in.data()));
+		} else {
+			return *std::bit_cast<const T *>(in.data());
+		}
 	}
-	(std::make_index_sequence<sizeof(T)>());
 }
 
 template <typename Config> struct internal_hasher {
