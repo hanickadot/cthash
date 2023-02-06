@@ -15,8 +15,16 @@ TEST_CASE("shake128 literal basics") {
 	const auto c = "1234567890abcdef"_shake128;
 	REQUIRE(c.size() == 8u);
 
+	const auto d = "1234567800000000"_shake128;
+	REQUIRE(d.size() == 8u);
+
 	REQUIRE(a == b);
 	REQUIRE(a == c);
+
+	REQUIRE(a == d);
+	REQUIRE(b == d);
+
+	REQUIRE(c != d);
 
 	REQUIRE((a <=> b) == 0);
 	REQUIRE((a <=> c) == 0);
