@@ -23,6 +23,7 @@ static_assert((shake256_config::capacity_bit + shake256_config::rate_bit) == 160
 using shake256 = cthash::keccak_hasher<shake256_config>;
 
 template <size_t N> struct shake256_value: tagged_hash_value<variable_bit_length_tag<N, shake256_config>> {
+	static_assert(N > 0);
 	using super = tagged_hash_value<variable_bit_length_tag<N, shake256_config>>;
 	using super::super;
 

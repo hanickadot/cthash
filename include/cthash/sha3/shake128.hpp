@@ -23,12 +23,14 @@ static_assert((shake128_config::capacity_bit + shake128_config::rate_bit) == 160
 using shake128 = cthash::keccak_hasher<shake128_config>;
 
 template <size_t N> struct shake128_value: tagged_hash_value<variable_bit_length_tag<N, shake128_config>> {
+	static_assert(N > 0);
 	using super = tagged_hash_value<variable_bit_length_tag<N, shake128_config>>;
 	using super::super;
 
 	template <typename CharT> explicit constexpr shake128_value(const internal::fixed_string<CharT, N / 8u> & in) noexcept: super{in} { }
 
 	template <size_t K> constexpr friend bool operator==(const shake128_value & lhs, const shake128_value<K> & rhs) noexcept {
+		static_assert(K > 0);
 		constexpr auto smallest_n = std::min(N, K);
 		const auto lhs_view = std::span<const std::byte, smallest_n / 8u>(lhs.data(), smallest_n / 8u);
 		const auto rhs_view = std::span<const std::byte, smallest_n / 8u>(rhs.data(), smallest_n / 8u);
@@ -36,6 +38,7 @@ template <size_t N> struct shake128_value: tagged_hash_value<variable_bit_length
 	}
 
 	template <size_t K> constexpr friend auto operator<=>(const shake128_value & lhs, const shake128_value<K> & rhs) noexcept {
+		static_assert(K > 0);
 		constexpr auto smallest_n = std::min(N, K);
 		return internal::threeway_compare_of_same_size(lhs.data(), rhs.data(), smallest_n / 8u);
 	}
