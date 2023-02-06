@@ -34,15 +34,21 @@ template <typename Config, typename StageT, size_t StageLength, typename StateT,
 		const auto temp1 = h + Config::sum_e(e) + choice(e, f, g) + Config::constants[i] + w[i];
 		const auto temp2 = Config::sum_a(a) + majority(a, b, c);
 
-		// move around
-		h = g;
-		g = f;
-		f = e;
-		e = d + temp1;
-		d = c;
-		c = b;
-		b = a;
+		// move around (that's rotate)
+		std::rotate(wvar.begin(), wvar.begin() + 7u, wvar.end());
+
+		e += temp1;
 		a = temp1 + temp2;
+
+		// originally it was:
+		// h = g;
+		// g = f;
+		// f = e;
+		// e = d + temp1;
+		// d = c;
+		// c = b;
+		// b = a;
+		// a = temp1 + temp2;
 	}
 
 	// add store back
