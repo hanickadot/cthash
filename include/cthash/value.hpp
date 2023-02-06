@@ -38,14 +38,20 @@ template <typename CharT, size_t N> hash_value(const CharT (&)[N]) -> hash_value
 template <typename CharT, size_t N> hash_value(std::span<const CharT, N>) -> hash_value<N / 2u>;
 template <typename CharT, size_t N> hash_value(const internal::fixed_string<CharT, N> &) -> hash_value<N / 2u>;
 
-template <typename Tag> struct tagged_hash_value: hash_value<internal::digest_bytes_length_of<Tag>> {
+template <typename Tag, size_t = internal::digest_bytes_length_of<Tag>> struct tagged_hash_value: hash_value<internal::digest_bytes_length_of<Tag>> {
 	static constexpr size_t N = internal::digest_bytes_length_of<Tag>;
 
 	using super = hash_value<N>;
 	using super::super;
 	template <typename CharT> explicit constexpr tagged_hash_value(const internal::fixed_string<CharT, N * 2u> & in) noexcept: super{in} { }
 
-	static constexpr size_t digest_length = Tag::digest_length;
+	static constexpr size_t digest_length = N;
+};
+
+template <typename T> concept variable_digest_length = T::digest_length_bit == 0u;
+
+template <size_t N, variable_digest_length Tag> struct variable_bit_length_tag: Tag {
+	static constexpr size_t digest_length_bit = N;
 };
 
 namespace literals {

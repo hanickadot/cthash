@@ -40,7 +40,8 @@ struct mapped_file {
 int main(int argc, char ** argv) {
 	if (argc < 3) {
 		std::cerr << argv[0] << " hash file\n";
-		std::cerr << "hash is one of: sha-224, sha-256, sha-384, sha-512, sha-512/223, sha-512/256, sha3-224, sha3-256, sha3-384, sha3-512\n";
+		std::cerr << "hash is one of: sha-224, sha-256, sha-384, sha-512, sha-512/223, sha-512/256, sha3-224, sha3-256, sha3-384, sha3-512, \n";
+		std::cerr << "  shake-128/n, shake-256/n (where n is 32/64/128/256/512/1024/2048)\n";
 		return 1;
 	}
 
@@ -74,6 +75,34 @@ int main(int argc, char ** argv) {
 		std::cout << cthash::sha3_384{}.update(f.get_span()).final() << "\n";
 	} else if (h == "sha3-512") {
 		std::cout << cthash::sha3_512{}.update(f.get_span()).final() << "\n";
+	} else if (h == "shake-128/32") {
+		std::cout << cthash::shake128{}.update(f.get_span()).final<32>() << "\n";
+	} else if (h == "shake-128/64") {
+		std::cout << cthash::shake128{}.update(f.get_span()).final<64>() << "\n";
+	} else if (h == "shake-128/128") {
+		std::cout << cthash::shake128{}.update(f.get_span()).final<128>() << "\n";
+	} else if (h == "shake-128/256") {
+		std::cout << cthash::shake128{}.update(f.get_span()).final<256>() << "\n";
+	} else if (h == "shake-128/512") {
+		std::cout << cthash::shake128{}.update(f.get_span()).final<512>() << "\n";
+	} else if (h == "shake-128/1024") {
+		std::cout << cthash::shake128{}.update(f.get_span()).final<1024>() << "\n";
+	} else if (h == "shake-128/2048") {
+		std::cout << cthash::shake128{}.update(f.get_span()).final<2048>() << "\n";
+	} else if (h == "shake-256/32") {
+		std::cout << cthash::shake256{}.update(f.get_span()).final<32>() << "\n";
+	} else if (h == "shake-256/64") {
+		std::cout << cthash::shake256{}.update(f.get_span()).final<64>() << "\n";
+	} else if (h == "shake-256/128") {
+		std::cout << cthash::shake256{}.update(f.get_span()).final<128>() << "\n";
+	} else if (h == "shake-256/256") {
+		std::cout << cthash::shake256{}.update(f.get_span()).final<256>() << "\n";
+	} else if (h == "shake-256/512") {
+		std::cout << cthash::shake256{}.update(f.get_span()).final<512>() << "\n";
+	} else if (h == "shake-256/1024") {
+		std::cout << cthash::shake256{}.update(f.get_span()).final<1024>() << "\n";
+	} else if (h == "shake-256/2048") {
+		std::cout << cthash::shake256{}.update(f.get_span()).final<2048>() << "\n";
 	} else {
 		std::cerr << "unknown hash function!\n";
 		return 1;

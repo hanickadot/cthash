@@ -7,6 +7,7 @@
 namespace cthash::internal {
 
 // support
+
 template <typename T> concept digest_length_provided = requires() //
 {
 	{ static_cast<size_t>(T::digest_length) } -> std::same_as<size_t>;

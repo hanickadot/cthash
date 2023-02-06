@@ -13,5 +13,7 @@
 #include "sha3/sha3-256.hpp"
 #include "sha3/sha3-384.hpp"
 #include "sha3/sha3-512.hpp"
+#include "sha3/shake128.hpp"
+#include "sha3/shake256.hpp"
 
 #endif

@@ -240,7 +240,7 @@ template <typename Config> struct basic_keccak_hasher {
 	}
 
 	constexpr void squeeze(digest_span_t output_fixed) noexcept
-	requires(digest_length < rate)
+	requires((digest_length < rate) && digest_length != 0u)
 	{
 		auto output = std::span<std::byte>(output_fixed);
 
@@ -280,14 +280,29 @@ template <typename Config> struct basic_keccak_hasher {
 		}
 	}
 
-	constexpr void final(digest_span_t digest) noexcept {
+	constexpr void final(digest_span_t digest) noexcept
+	requires(digest_length != 0u)
+	{
 		final_absorb();
 		squeeze(digest);
 	}
 
-	constexpr result_t final() noexcept {
+	constexpr result_t final() noexcept
+	requires(digest_length != 0u)
+	{
 		result_t output;
 		final(output);
+		return output;
+	}
+
+	template <size_t N> constexpr auto final() noexcept
+	requires(digest_length == 0u)
+	{
+		static_assert(N % 8u == 0u, "Only whole bytes are supported!");
+		using result_type = typename Config::template variable_digest<N>;
+		result_type output;
+		final_absorb();
+		squeeze(output);
 		return output;
 	}
 };
