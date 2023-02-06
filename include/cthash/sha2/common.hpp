@@ -25,14 +25,7 @@ template <typename Config, typename StageT, size_t StageLength, typename StateT,
 	auto wvar = state_t(state);
 
 	// just give them names
-	auto & a = wvar[0];
-	auto & b = wvar[1];
-	auto & c = wvar[2];
-	auto & d = wvar[3];
-	auto & e = wvar[4];
-	auto & f = wvar[5];
-	auto & g = wvar[6];
-	auto & h = wvar[7];
+	auto & [a, b, c, d, e, f, g, h] = wvar;
 
 	// number of rounds is same as constants
 	static_assert(StageLength == Config::constants.size());
