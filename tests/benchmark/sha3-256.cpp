@@ -1,5 +1,6 @@
 #include "../internal/support.hpp"
 #include <cthash/sha3/sha3-256.hpp>
+#include <memory>
 #include <catch2/benchmark/catch_benchmark.hpp>
 #include <catch2/catch_test_macros.hpp>
 
