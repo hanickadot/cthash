@@ -5,6 +5,7 @@
 #include "../hasher.hpp"
 #include "../internal/bit.hpp"
 #include "../internal/convert.hpp"
+#include "../simple.hpp"
 #include "../value.hpp"
 
 namespace cthash {

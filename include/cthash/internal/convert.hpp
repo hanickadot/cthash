@@ -9,6 +9,10 @@
 
 namespace cthash {
 
+template <typename It1, typename It2, typename It3> constexpr auto byte_copy(It1 first, It2 last, It3 destination) {
+	return std::transform(first, last, destination, [](byte_like auto v) { return static_cast<std::byte>(v); });
+}
+
 template <typename T, byte_like Byte> constexpr auto cast_from_bytes(std::span<const Byte, sizeof(T)> in) noexcept -> T {
 	if (std::is_constant_evaluated()) {
 		return [&]<size_t... Idx>(std::index_sequence<Idx...>) {
