@@ -16,4 +16,7 @@
 #include "sha3/shake128.hpp"
 #include "sha3/shake256.hpp"
 
+// xxhash (non-crypto fast hash)
+#include "xxhash.hpp"
+
 #endif

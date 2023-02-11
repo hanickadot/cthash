@@ -2,15 +2,14 @@
 #define CTHASH_INTERNAL_CONVERT_HPP
 
 #include "bit.hpp"
+#include "concepts.hpp"
 #include <span>
 #include <type_traits>
 #include <cstddef>
 
 namespace cthash {
 
-template <typename T> concept byte_like = (sizeof(T) == 1u) && (std::same_as<T, char> || std::same_as<T, unsigned char> || std::same_as<T, char8_t> || std::same_as<T, std::byte> || std::same_as<T, uint8_t> || std::same_as<T, int8_t>);
-
-template <typename T, byte_like Byte> constexpr auto cast_from_bytes(std::span<const Byte, sizeof(T)> in) noexcept {
+template <typename T, byte_like Byte> constexpr auto cast_from_bytes(std::span<const Byte, sizeof(T)> in) noexcept -> T {
 	if (std::is_constant_evaluated()) {
 		return [&]<size_t... Idx>(std::index_sequence<Idx...>) {
 			return ((static_cast<T>(in[Idx]) << ((sizeof(T) - 1u - Idx) * 8u)) | ...);
@@ -18,14 +17,14 @@ template <typename T, byte_like Byte> constexpr auto cast_from_bytes(std::span<c
 		(std::make_index_sequence<sizeof(T)>());
 	} else {
 		if constexpr (std::endian::native == std::endian::little) {
-			return internal::byteswap(*std::bit_cast<const T *>(in.data()));
+			return static_cast<T>(internal::byteswap(*std::bit_cast<const T *>(in.data())));
 		} else {
-			return *std::bit_cast<const T *>(in.data());
+			return static_cast<T>(*std::bit_cast<const T *>(in.data()));
 		}
 	}
 }
 
-template <typename T, byte_like Byte> constexpr auto cast_from_le_bytes(std::span<const Byte, sizeof(T)> in) noexcept {
+template <typename T, byte_like Byte> constexpr auto cast_from_le_bytes(std::span<const Byte, sizeof(T)> in) noexcept -> T {
 	if (std::is_constant_evaluated()) {
 		return [&]<size_t... Idx>(std::index_sequence<Idx...>) {
 			return ((static_cast<T>(in[Idx]) << (Idx * 8u)) | ...);
@@ -33,9 +32,9 @@ template <typename T, byte_like Byte> constexpr auto cast_from_le_bytes(std::spa
 		(std::make_index_sequence<sizeof(T)>());
 	} else {
 		if constexpr (std::endian::native == std::endian::big) {
-			return internal::byteswap(*std::bit_cast<const T *>(in.data()));
+			return static_cast<T>(internal::byteswap(*std::bit_cast<const T *>(in.data())));
 		} else {
-			return *std::bit_cast<const T *>(in.data());
+			return static_cast<T>(*std::bit_cast<const T *>(in.data()));
 		}
 	}
 }

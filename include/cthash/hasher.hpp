@@ -4,6 +4,7 @@
 #include "value.hpp"
 #include "internal/assert.hpp"
 #include "internal/bit.hpp"
+#include "internal/concepts.hpp"
 #include "internal/convert.hpp"
 #include "internal/deduce.hpp"
 #include <algorithm>
@@ -14,22 +15,6 @@
 #include <cstdint>
 
 namespace cthash {
-
-template <typename T> concept one_byte_char = (sizeof(T) == 1u);
-
-template <one_byte_char CharT, size_t N> void string_literal_helper(const CharT (&)[N]);
-
-template <typename T> concept string_literal = requires(const T & in) //
-{
-	string_literal_helper(in);
-};
-
-template <typename T> concept convertible_to_byte_span = requires(T && obj) //
-{
-	{ std::span(obj) };
-	requires byte_like<typename decltype(std::span(obj))::value_type>;
-	requires !string_literal<T>;
-};
 
 template <typename It1, typename It2, typename It3> constexpr auto byte_copy(It1 first, It2 last, It3 destination) {
 	return std::transform(first, last, destination, [](byte_like auto v) { return static_cast<std::byte>(v); });
