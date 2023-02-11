@@ -4,6 +4,7 @@
 #include "value.hpp"
 #include "internal/assert.hpp"
 #include "internal/bit.hpp"
+#include "internal/convert.hpp"
 #include "internal/deduce.hpp"
 #include <algorithm>
 #include <array>
@@ -15,8 +16,6 @@
 namespace cthash {
 
 template <typename T> concept one_byte_char = (sizeof(T) == 1u);
-
-template <typename T> concept byte_like = (sizeof(T) == 1u) && (std::same_as<T, char> || std::same_as<T, unsigned char> || std::same_as<T, char8_t> || std::same_as<T, std::byte> || std::same_as<T, uint8_t> || std::same_as<T, int8_t>);
 
 template <one_byte_char CharT, size_t N> void string_literal_helper(const CharT (&)[N]);
 
@@ -34,38 +33,6 @@ template <typename T> concept convertible_to_byte_span = requires(T && obj) //
 
 template <typename It1, typename It2, typename It3> constexpr auto byte_copy(It1 first, It2 last, It3 destination) {
 	return std::transform(first, last, destination, [](byte_like auto v) { return static_cast<std::byte>(v); });
-}
-
-template <std::unsigned_integral T> struct unwrap_bigendian_number {
-	static constexpr size_t bytes = sizeof(T);
-	static constexpr size_t bits = bytes * 8u;
-
-	std::span<std::byte, bytes> ref;
-
-	constexpr void operator=(T value) noexcept {
-		[&]<size_t... Idx>(std::index_sequence<Idx...>) {
-			((ref[Idx] = static_cast<std::byte>(value >> ((bits - 8u) - 8u * Idx))), ...);
-		}
-		(std::make_index_sequence<bytes>());
-	}
-};
-
-unwrap_bigendian_number(std::span<std::byte, 8>)->unwrap_bigendian_number<uint64_t>;
-unwrap_bigendian_number(std::span<std::byte, 4>)->unwrap_bigendian_number<uint32_t>;
-
-template <typename T, byte_like Byte> constexpr auto cast_from_bytes(std::span<const Byte, sizeof(T)> in) noexcept {
-	if (std::is_constant_evaluated()) {
-		return [&]<size_t... Idx>(std::index_sequence<Idx...>) {
-			return ((static_cast<T>(in[Idx]) << ((sizeof(T) - 1u - Idx) * 8u)) | ...);
-		}
-		(std::make_index_sequence<sizeof(T)>());
-	} else {
-		if constexpr (std::endian::native == std::endian::little) {
-			return internal::byteswap(*std::bit_cast<const T *>(in.data()));
-		} else {
-			return *std::bit_cast<const T *>(in.data());
-		}
-	}
 }
 
 template <typename Config> struct internal_hasher {
