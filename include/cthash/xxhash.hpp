@@ -11,7 +11,6 @@
 #include <array>
 #include <span>
 #include <string_view>
-#include <iostream>
 
 namespace cthash {
 
@@ -133,7 +132,6 @@ template <size_t Bits> struct xxhash {
 	value_type length{0u};
 	acc_array internal_state{};
 	std::array<std::byte, sizeof(value_type) * 4u> buffer{};
-	size_t last_copy = 0u;
 
 	// step 1 in constructor
 	explicit constexpr xxhash(value_type s = 0u) noexcept: seed{s}, internal_state{seed + config::primes[0] + config::primes[1], seed + config::primes[1], seed, seed - config::primes[0]} { }
@@ -150,7 +148,7 @@ template <size_t Bits> struct xxhash {
 		return length % buffer.size();
 	}
 
-	template <byte_like Byte> constexpr xxhash & update(std::span<const Byte> input) noexcept {
+	template <byte_like Byte> [[gnu::flatten]] constexpr xxhash & update(std::span<const Byte> input) noexcept {
 		const auto buffer_remaining = std::span(buffer).subspan(buffer_usage());
 
 		// everything we insert here is counting as part of input (even if we process it later)
@@ -162,30 +160,35 @@ template <size_t Bits> struct xxhash {
 			byte_copy(to_copy.begin(), to_copy.end(), buffer_remaining.begin());
 			input = input.subspan(to_copy.size());
 
-			if ((length % buffer.size()) == 0u) {
-				const auto full_buffer_view = std::span<const std::byte, sizeof(acc_array)>(buffer);
-				process_lanes(full_buffer_view);
+			// if we didn't fill current block, we will do it later
+			if (buffer_remaining.size() != to_copy.size()) {
+				CTHASH_ASSERT(input.size() == 0u);
+				return *this;
 			}
+
+			// but if we did, we need to process it
+			const auto full_buffer_view = std::span<const std::byte, sizeof(acc_array)>(buffer);
+			process_lanes(full_buffer_view);
 		}
 
 		// process blocks
 		while (input.size() >= buffer.size()) {
-			process_lanes(input.template first<sizeof(acc_array)>());
+			const auto current_lanes = input.template first<sizeof(acc_array)>();
 			input = input.subspan(buffer.size());
+
+			process_lanes(current_lanes);
 		}
 
-		// copy remainder to temporary buffer
+		// copy remainder of input to the buffer, so it's processed later
 		byte_copy(input.begin(), input.end(), buffer.begin());
-		last_copy = std::distance(input.begin(), input.end());
-
 		return *this;
 	}
 
-	template <one_byte_char CharT> constexpr xxhash & update(std::basic_string_view<CharT> input) noexcept {
+	template <one_byte_char CharT> [[gnu::flatten]] constexpr xxhash & update(std::basic_string_view<CharT> input) noexcept {
 		return update(std::span<const CharT>(input.data(), input.size()));
 	}
 
-	template <string_literal T> constexpr xxhash & update(const T & input) noexcept {
+	template <string_literal T> [[gnu::flatten]] constexpr xxhash & update(const T & input) noexcept {
 		return update(std::span(std::data(input), std::size(input) - 1u));
 	}
 
@@ -199,9 +202,8 @@ template <size_t Bits> struct xxhash {
 		return config::convergence(internal_state);
 	}
 
-	constexpr void final(digest_span_t out) const noexcept {
-		const auto buffer_used = std::span<const std::byte>(buffer).first(length % buffer.size());
-		std::cout << "buffer used is " << buffer_used.size() << " bytes\n";
+	[[gnu::flatten]] constexpr void final(digest_span_t out) const noexcept {
+		const auto buffer_used = std::span<const std::byte>(buffer).first(buffer_usage());
 
 		value_type acc = converge_conditionaly();
 
@@ -218,7 +220,7 @@ template <size_t Bits> struct xxhash {
 		unwrap_bigendian_number<value_type>{out} = acc;
 	}
 
-	constexpr auto final() const noexcept -> tagged_hash_value<tag> {
+	[[gnu::flatten]] constexpr auto final() const noexcept -> tagged_hash_value<tag> {
 		tagged_hash_value<tag> output;
 		this->final(output);
 		return output;
