@@ -86,7 +86,7 @@ template <typename Config> struct basic_keccak_hasher {
 	using digest_span_t = std::span<std::byte, digest_length>;
 
 	keccak::state_1600 internal_state{};
-	size_t position{0u};
+	uint8_t position{0u};
 
 	constexpr basic_keccak_hasher() noexcept {
 		std::fill(internal_state.begin(), internal_state.end(), uint64_t{0});
@@ -95,33 +95,44 @@ template <typename Config> struct basic_keccak_hasher {
 	template <byte_like T> constexpr size_t xor_overwrite_block(std::span<const T> input) noexcept {
 		using value_t = keccak::state_1600::value_type;
 
-		CTHASH_ASSERT((position + input.size()) <= rate);
+		if ((std::is_constant_evaluated() | (std::endian::native != std::endian::little))) {
+			CTHASH_ASSERT((size_t(position) + input.size()) <= rate);
 
-		// unaligned prefix (by copying from left to right it should be little endian)
-		if (position % sizeof(value_t) != 0u) {
-			// xor unaligned value and move to aligned if possible
-			const size_t prefix_size = std::min(input.size(), sizeof(value_t) - (position % sizeof(value_t)));
-			internal_state[position / sizeof(uint64_t)] ^= convert_prefix_into_value<value_t>(input.first(prefix_size), static_cast<unsigned>(position % sizeof(value_t)));
-			position += prefix_size;
-			input = input.subspan(prefix_size);
+			// unaligned prefix (by copying from left to right it should be little endian)
+			if (position % sizeof(value_t) != 0u) {
+				// xor unaligned value and move to aligned if possible
+				const size_t prefix_size = std::min(input.size(), sizeof(value_t) - (position % sizeof(value_t)));
+				internal_state[position / sizeof(uint64_t)] ^= convert_prefix_into_value<value_t>(input.first(prefix_size), static_cast<unsigned>(position % sizeof(value_t)));
+				position += prefix_size;
+				input = input.subspan(prefix_size);
+			}
+
+			// aligned blocks
+			while (input.size() >= sizeof(value_t)) {
+				// xor aligned value and move to next
+				internal_state[position / sizeof(value_t)] ^= cast_from_le_bytes<value_t>(input.template first<sizeof(value_t)>());
+				position += sizeof(value_t);
+				input = input.subspan(sizeof(value_t));
+			}
+
+			// unaligned suffix
+			if (not input.empty()) {
+				// xor and finish
+				internal_state[position / sizeof(value_t)] ^= convert_prefix_into_value<value_t>(input, 0u);
+				position += input.size();
+			}
+
+			return position;
+		} else {
+			const auto buffer = std::as_writable_bytes(std::span<uint64_t>(internal_state));
+			const auto remaining = buffer.subspan(position);
+			const auto place = remaining.first(std::min(input.size(), remaining.size()));
+
+			std::transform(place.data(), place.data() + place.size(), input.data(), place.data(), [](std::byte lhs, auto rhs) { return lhs ^ static_cast<std::byte>(rhs); });
+
+			position += place.size();
+			return position;
 		}
-
-		// aligned blocks
-		while (input.size() >= sizeof(value_t)) {
-			// xor aligned value and move to next
-			internal_state[position / sizeof(value_t)] ^= cast_from_le_bytes<value_t>(input.template first<sizeof(value_t)>());
-			position += sizeof(value_t);
-			input = input.subspan(sizeof(value_t));
-		}
-
-		// unaligned suffix
-		if (not input.empty()) {
-			// xor and finish
-			internal_state[position / sizeof(value_t)] ^= convert_prefix_into_value<value_t>(input, 0u);
-			position += input.size();
-		}
-
-		return position;
 	}
 
 	template <byte_like T> constexpr auto update(std::span<const T> input) noexcept {

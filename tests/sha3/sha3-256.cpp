@@ -12,35 +12,77 @@ TEST_CASE("sha3-256 basics") {
 
 TEST_CASE("sha3-256 test strings") {
 	SECTION("empty") {
-		const auto r0 = cthash::sha3_256().update("").final();
+		constexpr auto calculation = []() {
+			return cthash::sha3_256().update("").final();
+		};
+
+		auto r0 = calculation();
+		constexpr auto r1 = calculation();
+
 		REQUIRE(r0 == "a7ffc6f8bf1ed76651c14756a061d662f580ff4de43b49fa82d80a4b80f8434a"_sha3_256);
+		REQUIRE(r0 == r1);
 	}
 
 	SECTION("empty with bytes") {
-		const auto r0 = cthash::sha3_256().update(std::span<const std::byte>()).final();
+		constexpr auto calculation = []() {
+			return cthash::sha3_256().update(std::span<const std::byte>()).final();
+		};
+
+		auto r0 = calculation();
+		constexpr auto r1 = calculation();
+
 		REQUIRE(r0 == "a7ffc6f8bf1ed76651c14756a061d662f580ff4de43b49fa82d80a4b80f8434a"_sha3_256);
+		REQUIRE(r0 == r1);
 	}
 
 	SECTION("test") {
-		const auto r0 = cthash::sha3_256().update("test").final();
+		constexpr auto calculation = []() {
+			return cthash::sha3_256().update("test").final();
+		};
+
+		auto r0 = calculation();
+		constexpr auto r1 = calculation();
+
 		REQUIRE(r0 == "36f028580bb02cc8272a9a020f4200e346e276ae664e45ee80745574e2f5ab80"_sha3_256);
+		REQUIRE(r0 == r1);
 	}
 
 	SECTION("hanicka") {
-		const auto r0 = cthash::sha3_256().update("hanicka").final();
+		constexpr auto calculation = []() {
+			return cthash::sha3_256().update("hanicka").final();
+		};
+
+		auto r0 = calculation();
+		constexpr auto r1 = calculation();
+
 		REQUIRE(r0 == "8f8b0b8af4c371e91791b1ddb2d0788661dd687060404af6320971bcc53b44fb"_sha3_256);
+		REQUIRE(r0 == r1);
 	}
 
 	SECTION("*136 characters (exactly block size)") {
-		auto in = std::string(size_t(136), '*'); // size of block
-		const auto r0 = cthash::sha3_256().update(in).final();
+		constexpr auto calculation = []() {
+			auto in = std::string(size_t(136), '*'); // size of block
+			return cthash::sha3_256().update(in).final();
+		};
+
+		auto r0 = calculation();
+		constexpr auto r1 = calculation();
+
 		REQUIRE(r0 == "5224abc95021feafd89e36b41067884a08b39ff8e5ce0905c3a67d1857169e8a"_sha3_256);
+		REQUIRE(r0 == r1);
 	}
 
 	SECTION("*137 characters (exactly block + 1 size)") {
-		auto in = std::string(size_t(137), '*'); // size of block + 1
-		const auto r0 = cthash::sha3_256().update(in).final();
+		constexpr auto calculation = []() {
+			auto in = std::string(size_t(136 + 1), '*'); // size of block
+			return cthash::sha3_256().update(in).final();
+		};
+
+		auto r0 = calculation();
+		constexpr auto r1 = calculation();
+
 		REQUIRE(r0 == "596fe83ba2cb6199c98be88ca31fc21511e0e7244465c0bdfece933e9daa59bd"_sha3_256);
+		REQUIRE(r0 == r1);
 	}
 
 	SECTION("*2500 characters") {
