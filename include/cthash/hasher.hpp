@@ -1,6 +1,7 @@
 #ifndef CONSTEXPR_SHA2_HASHER_HPP
 #define CONSTEXPR_SHA2_HASHER_HPP
 
+#include "simple.hpp"
 #include "value.hpp"
 #include "internal/assert.hpp"
 #include "internal/bit.hpp"
@@ -15,10 +16,6 @@
 #include <cstdint>
 
 namespace cthash {
-
-template <typename It1, typename It2, typename It3> constexpr auto byte_copy(It1 first, It2 last, It3 destination) {
-	return std::transform(first, last, destination, [](byte_like auto v) { return static_cast<std::byte>(v); });
-}
 
 template <typename Config> struct internal_hasher {
 	static constexpr auto config = Config{};
@@ -249,10 +246,6 @@ template <typename Config> struct hasher: private internal_hasher<Config> {
 		return super::total_length;
 	}
 };
-
-template <typename Hasher, typename T> constexpr auto simple(const T & value) noexcept {
-	return Hasher{}.update(value).final();
-}
 
 } // namespace cthash
 

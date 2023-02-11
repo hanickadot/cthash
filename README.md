@@ -1,6 +1,6 @@
 # CTHASH (Compile Time Hash)
 
-This library is constexpr implementation of SHA-2 and SHA-3 family of hashes.
+This library is constexpr implementation of SHA-2, SHA-3, and xxhash family of hashes.
 
 ## Supported hash function
 
@@ -19,6 +19,9 @@ The library also implements hash_value literals in namespace `cthash::literals` 
 
 * SHAKE-128 (`_shake128`)
 * SHAKE-256 (`_shake256`)
+
+* XXHASH-32 (`_xxh32`)
+* XXHASH-64 (`_xxh64`)
 
 ## Example
 

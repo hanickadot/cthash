@@ -1,10 +1,13 @@
 #ifndef CTHASH_XXHASH_HPP
 #define CTHASH_XXHASH_HPP
 
+#include "simple.hpp"
+#include "value.hpp"
 #include "internal/assert.hpp"
 #include "internal/bit.hpp"
 #include "internal/concepts.hpp"
 #include "internal/convert.hpp"
+#include "internal/deduce.hpp"
 #include <array>
 #include <span>
 #include <string_view>
@@ -20,6 +23,10 @@ template <std::unsigned_integral T, byte_like Byte> constexpr auto read_le_numbe
 	input = input.subspan(sizeof(T));
 
 	return r;
+}
+
+template <std::unsigned_integral T, size_t Off, byte_like Byte, size_t N> constexpr auto get_le_number_from(std::span<const Byte, N> input) noexcept {
+	return cast_from_le_bytes<T>(input.template subspan<Off * sizeof(T), sizeof(T)>());
 }
 
 template <> struct xxhash_types<32> {
@@ -107,63 +114,138 @@ template <> struct xxhash_types<64> {
 	}
 };
 
-template <size_t Bits, byte_like Byte> [[gnu::flatten]] constexpr auto xxhash(std::span<const Byte> input, typename xxhash_types<Bits>::value_type seed = 0u) {
+template <size_t Bits> struct xxhash {
+	static_assert(Bits == 32u || Bits == 64u);
+
+	struct tag {
+		static constexpr size_t digest_length = Bits / 8u;
+	};
+
 	using config = xxhash_types<Bits>;
 	using acc_array = typename config::acc_array;
 	using value_type = typename config::value_type;
-	constexpr auto & primes = config::primes;
-	const auto original_size = input.size();
 
-	value_type acc = 0u;
+	using digest_span_t = std::span<std::byte, Bits / 8u>;
 
-	if (input.size() < sizeof(acc_array)) {
-		// step 1-3: skipped
-		acc = seed + primes[4];
+	// members
+	value_type seed{0u};
+	value_type length{0u};
+	acc_array internal_state{};
+	std::array<std::byte, sizeof(value_type) * 4u> buffer{};
 
-	} else {
-		// step 1: initialization (same for both versions)
-		auto accs = acc_array{
-			seed + primes[0] + primes[1],
-			seed + primes[1],
-			seed + 0u,
-			seed - primes[0],
-		};
+	// step 1 in constructor
+	explicit constexpr xxhash(value_type s = 0u) noexcept: seed{s}, internal_state{seed + config::primes[0] + config::primes[1], seed + config::primes[1], seed, seed - config::primes[0]} { }
 
-		// step 2: process stripes
-		while (input.size() >= sizeof(acc_array)) {
-			accs[0] = config::round(accs[0], read_le_number_from<value_type>(input));
-			accs[1] = config::round(accs[1], read_le_number_from<value_type>(input));
-			accs[2] = config::round(accs[2], read_le_number_from<value_type>(input));
-			accs[3] = config::round(accs[3], read_le_number_from<value_type>(input));
-		}
-
-		// step 3: merge and convergence
-		acc = config::convergence(accs);
+	template <byte_like Byte> constexpr void process_lanes(std::span<const Byte, sizeof(acc_array)> lanes) noexcept {
+		// step 2: process lanes
+		internal_state[0] = config::round(internal_state[0], get_le_number_from<value_type, 0>(lanes));
+		internal_state[1] = config::round(internal_state[1], get_le_number_from<value_type, 1>(lanes));
+		internal_state[2] = config::round(internal_state[2], get_le_number_from<value_type, 2>(lanes));
+		internal_state[3] = config::round(internal_state[3], get_le_number_from<value_type, 3>(lanes));
 	}
 
-	// step 4: add input length
-	acc += static_cast<value_type>(original_size);
+	constexpr size_t buffer_usage() const noexcept {
+		return length % buffer.size();
+	}
 
-	// step 5: consume remaining input
-	acc = config::consume_remaining(acc, input);
+	template <byte_like Byte> [[gnu::flatten]] constexpr xxhash & update(std::span<const Byte> input) noexcept {
+		const auto buffer_remaining = std::span(buffer).subspan(buffer_usage());
 
-	// step 6: final mix / avalanche
-	acc = config::avalanche(acc);
+		// everything we insert here is counting as part of input (even if we process it later)
+		length += input.size();
 
-	return acc;
-}
+		// if there is remaining data from previous...
+		if (buffer_remaining.size() != buffer.size()) {
+			const auto to_copy = input.first(std::min(input.size(), buffer_remaining.size()));
+			byte_copy(to_copy.begin(), to_copy.end(), buffer_remaining.begin());
+			input = input.subspan(to_copy.size());
 
-template <size_t Bits, typename CharT> constexpr auto xxhash(std::basic_string_view<CharT> input, typename xxhash_types<Bits>::value_type seed = 0u) noexcept {
-	return xxhash<Bits>(std::span<const CharT>(input.data(), input.size()), seed);
-}
+			// if we didn't fill current block, we will do it later
+			if (buffer_remaining.size() != to_copy.size()) {
+				CTHASH_ASSERT(input.size() == 0u);
+				return *this;
+			}
 
-template <size_t Bits, string_literal T> constexpr auto xxhash(const T & literal, typename xxhash_types<Bits>::value_type seed = 0u) noexcept {
-	return xxhash<Bits>(std::span(std::data(literal), std::size(literal) - 1u), seed);
-}
+			// but if we did, we need to process it
+			const auto full_buffer_view = std::span<const std::byte, sizeof(acc_array)>(buffer);
+			process_lanes(full_buffer_view);
+		}
 
-template <size_t Bits, convertible_to_byte_span T> constexpr auto xxhash(const T & something, typename xxhash_types<Bits>::value_type seed = 0u) noexcept {
-	return xxhash<Bits>(std::span(something), seed);
-}
+		// process blocks
+		while (input.size() >= buffer.size()) {
+			const auto current_lanes = input.template first<sizeof(acc_array)>();
+			input = input.subspan(buffer.size());
+
+			process_lanes(current_lanes);
+		}
+
+		// copy remainder of input to the buffer, so it's processed later
+		byte_copy(input.begin(), input.end(), buffer.begin());
+		return *this;
+	}
+
+	template <one_byte_char CharT> [[gnu::flatten]] constexpr xxhash & update(std::basic_string_view<CharT> input) noexcept {
+		return update(std::span<const CharT>(input.data(), input.size()));
+	}
+
+	template <string_literal T> [[gnu::flatten]] constexpr xxhash & update(const T & input) noexcept {
+		return update(std::span(std::data(input), std::size(input) - 1u));
+	}
+
+	constexpr auto converge_conditionaly() const noexcept -> value_type {
+		// step 1 shortcut for short input
+		if (length < buffer.size()) {
+			return seed + config::primes[4];
+		}
+
+		// otherwise we need to merge&converge internal state
+		return config::convergence(internal_state);
+	}
+
+	[[gnu::flatten]] constexpr void final(digest_span_t out) const noexcept {
+		const auto buffer_used = std::span<const std::byte>(buffer).first(buffer_usage());
+
+		value_type acc = converge_conditionaly();
+
+		// step 4: add input length
+		acc += static_cast<value_type>(length);
+
+		// step 5: consume remainder (not finished block from buffer)
+		acc = config::consume_remaining(acc, buffer_used);
+
+		// step 6: final mix/avalanche
+		acc = config::avalanche(acc);
+
+		// convert to big endian representation
+		unwrap_bigendian_number<value_type>{out} = acc;
+	}
+
+	[[gnu::flatten]] constexpr auto final() const noexcept -> tagged_hash_value<tag> {
+		tagged_hash_value<tag> output;
+		this->final(output);
+		return output;
+	}
+};
+
+using xxhash32 = cthash::xxhash<32>;
+using xxhash32_value = tagged_hash_value<xxhash32::tag>;
+
+using xxhash64 = cthash::xxhash<64>;
+using xxhash64_value = tagged_hash_value<xxhash64::tag>;
+
+namespace literals {
+
+	template <internal::fixed_string Value>
+	consteval auto operator""_xxh32() {
+		return xxhash32_value(Value);
+	}
+
+	template <internal::fixed_string Value>
+	consteval auto operator""_xxh64() {
+		return xxhash64_value(Value);
+	}
+
+} // namespace literals
 
 } // namespace cthash
 
