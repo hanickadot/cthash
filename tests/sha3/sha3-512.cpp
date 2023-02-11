@@ -60,3 +60,17 @@ TEST_CASE("sha3-512 test strings") {
 		REQUIRE(r0 == "e4163add44fed59d52141fe016088b98a9716e0fde36c9f0fce75937414bdcb8b4211d1909a5ccd7f32df8af6d991a7fe1f65238e6da7e591d946b289b6b0a49"_sha3_512);
 	}
 }
+
+TEST_CASE("sha3-512 stability") {
+	auto h = cthash::sha3_512();
+
+	constexpr int end = int(h.rate) * 2;
+
+	for (int i = 0; i != end; ++i) {
+		const auto piece = std::string(size_t(i), '#');
+		h.update(piece);
+	}
+
+	const auto r0 = h.final();
+	REQUIRE(r0 == "62a8487cf7d35dd2688962c80581436171c93c7250da289944ac95abd597baa12cca5c022a19addfaaae48f144da2e6dd9f24c02c63c8ca25bb3fc288277179c"_sha3_512);
+}

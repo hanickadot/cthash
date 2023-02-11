@@ -58,3 +58,17 @@ TEST_CASE("sha3-256 test strings") {
 		REQUIRE(r0 == "d406a008de11740c60173ea37a9c67d4f1dea8fbfc3a41a2cbef8037b32e7541"_sha3_256);
 	}
 }
+
+TEST_CASE("sha3-256 stability") {
+	auto h = cthash::sha3_256();
+
+	constexpr int end = int(h.rate) * 2;
+
+	for (int i = 0; i != end; ++i) {
+		const auto piece = std::string(size_t(i), '#');
+		h.update(piece);
+	}
+
+	const auto r0 = h.final();
+	REQUIRE(r0 == "af2e33605dbcb6f37facfcf7b999e068d25c38e12c86c33786cc207134812e6b"_sha3_256);
+}

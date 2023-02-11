@@ -58,3 +58,17 @@ TEST_CASE("sha3-224 test strings") {
 		REQUIRE(r0 == "7d4b80d6adeb7ba20723a0635b6582bd38c011389688305d381fa2cc"_sha3_224);
 	}
 }
+
+TEST_CASE("sha3-224 stability") {
+	auto h = cthash::sha3_224();
+
+	constexpr int end = int(h.rate) * 2;
+
+	for (int i = 0; i != end; ++i) {
+		const auto piece = std::string(size_t(i), '#');
+		h.update(piece);
+	}
+
+	const auto r0 = h.final();
+	REQUIRE(r0 == "2409c68f45c73652fef9ef6ca701560557fb01747b52f92ffffd0477"_sha3_224);
+}

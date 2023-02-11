@@ -19,52 +19,6 @@ template <size_t N> struct keccak_suffix {
 
 template <castable_to<std::byte>... Ts> keccak_suffix(unsigned, Ts...) -> keccak_suffix<sizeof...(Ts)>;
 
-template <size_t N> struct block_buffer {
-	std::array<std::byte, N> storage{};
-	unsigned used_bytes{0u};
-
-	constexpr size_t size() const noexcept {
-		return used_bytes;
-	}
-
-	constexpr size_t free_capacity() const noexcept {
-		CTHASH_ASSERT(used_bytes < N);
-		return N - used_bytes;
-	}
-
-	constexpr bool empty() const noexcept {
-		return size() == 0u;
-	}
-
-	constexpr bool full() const noexcept {
-		return size() == N;
-	}
-
-	constexpr void clear() noexcept {
-		used_bytes = 0u;
-	}
-
-	constexpr auto remaining_space() noexcept -> std::span<std::byte> {
-		return std::span<std::byte, N>(storage).subspan(used_bytes);
-	}
-
-	template <byte_like T> constexpr void eat_input_and_copy_into_remaining_space(std::span<const T> & input) noexcept {
-		const auto remaining = remaining_space();
-		const auto usable = input.first((std::min)(input.size(), remaining.size()));
-		input = input.subspan(usable.size());
-
-		byte_copy(usable.begin(), usable.end(), remaining.begin());
-		used_bytes += usable.size();
-	}
-
-	template <byte_like T> constexpr void copy_into_empty_buffer(std::span<const T> input) noexcept {
-		CTHASH_ASSERT(empty());
-		CTHASH_ASSERT(input.size() <= N);
-		byte_copy(input.begin(), input.end(), storage.begin());
-		used_bytes += input.size();
-	}
-};
-
 template <typename T, byte_like Byte> constexpr auto cast_from_le_bytes(std::span<const Byte, sizeof(T)> in) noexcept {
 	if (std::is_constant_evaluated()) {
 		return [&]<size_t... Idx>(std::index_sequence<Idx...>) {
@@ -99,6 +53,24 @@ unwrap_littleendian_number(std::span<std::byte, 4>)->unwrap_littleendian_number<
 
 template <typename T> struct identify;
 
+template <typename T, byte_like Byte> constexpr auto convert_prefix_into_aligned(std::span<const Byte> input, unsigned pos) noexcept -> std::array<std::byte, sizeof(T)> {
+	CTHASH_ASSERT(input.size() <= sizeof(T));
+	CTHASH_ASSERT(pos <= sizeof(T));
+	CTHASH_ASSERT((input.size() + pos) <= sizeof(T));
+
+	std::array<std::byte, sizeof(T)> buffer{};
+
+	std::fill(buffer.begin(), buffer.end(), std::byte{0});
+	std::transform(input.data(), input.data() + input.size(), buffer.data() + pos, [](auto v) { return static_cast<std::byte>(v); });
+
+	return buffer;
+}
+
+template <typename T, byte_like Byte> constexpr auto convert_prefix_into_value(std::span<const Byte> input, unsigned pos) noexcept -> uint64_t {
+	const auto tmp = convert_prefix_into_aligned<T, Byte>(input, pos);
+	return cast_from_le_bytes<T>(std::span<const std::byte, 8>(tmp));
+}
+
 template <typename Config> struct basic_keccak_hasher {
 	static_assert(Config::digest_length_bit % 8u == 0u);
 	static_assert(Config::rate_bit % 8u == 0u);
@@ -114,84 +86,95 @@ template <typename Config> struct basic_keccak_hasher {
 	using digest_span_t = std::span<std::byte, digest_length>;
 
 	keccak::state_1600 internal_state{};
-	block_buffer<rate> buffer;
+	size_t position{0u};
 
 	constexpr basic_keccak_hasher() noexcept {
 		std::fill(internal_state.begin(), internal_state.end(), uint64_t{0});
 	}
 
-	// inserting blocks of `rate` into the hash internal state
-	template <byte_like T> constexpr auto absorb(std::span<const T, rate> input) noexcept {
+	template <byte_like T> constexpr size_t xor_overwrite_block(std::span<const T> input) noexcept {
 		using value_t = keccak::state_1600::value_type;
 
-		// fill the `rate` part
-		static_assert(rate % sizeof(value_t) == 0u);
+		CTHASH_ASSERT((position + input.size()) <= rate);
 
-		for (int i = 0; i < int(rate); i += sizeof(value_t)) {
-			const auto part = input.subspan(size_t(i)).template first<sizeof(value_t)>();
-			const value_t v = cast_from_le_bytes<value_t>(part);
-
-			internal_state[i / sizeof(value_t)] ^= v;
+		// unaligned prefix (by copying from left to right it should be little endian)
+		if (position % sizeof(value_t) != 0u) {
+			// xor unaligned value and move to aligned if possible
+			const size_t prefix_size = std::min(input.size(), sizeof(value_t) - (position % sizeof(value_t)));
+			internal_state[position / sizeof(uint64_t)] ^= convert_prefix_into_value<value_t>(input.first(prefix_size), static_cast<unsigned>(position % sizeof(value_t)));
+			position += prefix_size;
+			input = input.subspan(prefix_size);
 		}
 
-		// filling `capacity` part is no-op
+		// aligned blocks
+		while (input.size() >= sizeof(value_t)) {
+			// xor aligned value and move to next
+			internal_state[position / sizeof(value_t)] ^= cast_from_le_bytes<value_t>(input.template first<sizeof(value_t)>());
+			position += sizeof(value_t);
+			input = input.subspan(sizeof(value_t));
+		}
 
-		// and call keccak
-		keccak_f(internal_state);
-	}
+		// unaligned suffix
+		if (not input.empty()) {
+			// xor and finish
+			internal_state[position / sizeof(value_t)] ^= convert_prefix_into_value<value_t>(input, 0u);
+			position += input.size();
+		}
 
-	constexpr auto absorb(std::span<const std::byte, rate> input) noexcept {
-		return absorb<std::byte>(input);
+		return position;
 	}
 
 	template <byte_like T> constexpr auto update(std::span<const T> input) noexcept {
-		// TODO replace with direct absorbing
-		if (not buffer.empty()) {
-			buffer.eat_input_and_copy_into_remaining_space(input);
-			if (buffer.full()) {
-				absorb(buffer.storage);
-				buffer.clear();
-			}
+		CTHASH_ASSERT(position < rate);
+		const size_t remaining_in_buffer = rate - position;
+
+		if (remaining_in_buffer > input.size()) {
+			// xor overwrite as much as we can, and that's all
+			xor_overwrite_block(input);
+			CTHASH_ASSERT(position < rate);
+			return;
 		}
 
+		// finish block and call keccak :)
+		const auto first_part = input.first(remaining_in_buffer);
+		input = input.subspan(remaining_in_buffer);
+		xor_overwrite_block(first_part);
+		CTHASH_ASSERT(position == rate);
+		keccak_f(internal_state);
+		position = 0u;
+
+		// for each full block we can absorb directly
 		while (input.size() >= rate) {
-			// process `rate` at once
 			const auto block = input.template first<rate>();
 			input = input.subspan(rate);
-
-			absorb(block);
+			CTHASH_ASSERT(position == 0u);
+			xor_overwrite_block<T>(block);
+			keccak_f(internal_state);
+			position = 0u;
 		}
 
-		// TODO replace with direct absorbing
+		// xor overwrite internal state with current remainder, and set position to end of it
 		if (not input.empty()) {
-			buffer.copy_into_empty_buffer(input);
-			CTHASH_ASSERT(!buffer.full());
+			CTHASH_ASSERT(position == 0u);
+			xor_overwrite_block(input);
+			CTHASH_ASSERT(position < rate);
 		}
 	}
 
 	// pad the message
-	constexpr void final_absorb() noexcept {
-		// TODO support longer suffixes
-		CTHASH_ASSERT(!buffer.full());
-
-		const auto suffix_and_padding = buffer.remaining_space();
+	constexpr void xor_padding_block() noexcept {
+		CTHASH_ASSERT(position < rate);
 
 		constexpr const auto & suffix = Config::suffix;
-		static_assert(suffix.values.size() == 1u, "longer suffix is not implemented");
-		CTHASH_ASSERT(Config::suffix.bits <= 5);
+		constexpr std::byte suffix_and_start_of_padding = (suffix.values[0] | (std::byte{0b0000'0001u} << suffix.bits));
 
-		// this technically never happen with SHA-3
-		CTHASH_ASSERT((suffix_and_padding.size() * 8u) >= (Config::suffix.bits + 2u));
+		internal_state[position / sizeof(uint64_t)] ^= uint64_t(suffix_and_start_of_padding) << ((position % sizeof(uint64_t)) * 8u);
+		internal_state[(rate - 1u) / sizeof(uint64_t)] ^= 0x8000000000000000ull; // last bit
+	}
 
-		// zero out buffer
-		// TODO replace with direct absorbing
-		std::fill(suffix_and_padding.begin(), suffix_and_padding.end(), std::byte{0});
-
-		// front and back can be the same
-		suffix_and_padding.front() = suffix.values[0] | (std::byte{0b0000'0001u} << suffix.bits);
-		suffix_and_padding.back() |= std::byte{0b1000'0000u};
-
-		absorb(buffer.storage);
+	constexpr void final_absorb() noexcept {
+		xor_padding_block();
+		keccak_f(internal_state);
 	}
 
 	// get resulting hash
