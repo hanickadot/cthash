@@ -148,6 +148,15 @@ template <size_t Bits> struct xxhash {
 		return length % buffer.size();
 	}
 
+	template <byte_like Byte> constexpr void process_blocks(std::span<const Byte> & input) noexcept {
+		while (input.size() >= buffer.size()) {
+			const auto current_lanes = input.template first<sizeof(acc_array)>();
+			input = input.subspan(buffer.size());
+
+			process_lanes(current_lanes);
+		}
+	}
+
 	template <byte_like Byte> [[gnu::flatten]] constexpr xxhash & update(std::span<const Byte> input) noexcept {
 		const auto buffer_remaining = std::span(buffer).subspan(buffer_usage());
 
@@ -172,12 +181,7 @@ template <size_t Bits> struct xxhash {
 		}
 
 		// process blocks
-		while (input.size() >= buffer.size()) {
-			const auto current_lanes = input.template first<sizeof(acc_array)>();
-			input = input.subspan(buffer.size());
-
-			process_lanes(current_lanes);
-		}
+		process_blocks(input);
 
 		// copy remainder of input to the buffer, so it's processed later
 		byte_copy(input.begin(), input.end(), buffer.begin());
@@ -192,6 +196,22 @@ template <size_t Bits> struct xxhash {
 		return update(std::span(std::data(input), std::size(input) - 1u));
 	}
 
+	template <byte_like Byte> [[gnu::flatten]] constexpr auto update_and_final(std::span<const Byte> input) noexcept {
+		length = input.size();
+		process_blocks(input);
+		tagged_hash_value<tag> output;
+		final_from(input, output);
+		return output;
+	}
+
+	template <one_byte_char CharT> [[gnu::flatten]] constexpr auto update_and_final(std::basic_string_view<CharT> input) noexcept {
+		return update_and_final(std::span<const CharT>(input.data(), input.size()));
+	}
+
+	template <string_literal T> [[gnu::flatten]] constexpr auto update_and_final(const T & input) noexcept {
+		return update_and_final(std::span(std::data(input), std::size(input) - 1u));
+	}
+
 	constexpr auto converge_conditionaly() const noexcept -> value_type {
 		// step 1 shortcut for short input
 		if (length < buffer.size()) {
@@ -202,8 +222,8 @@ template <size_t Bits> struct xxhash {
 		return config::convergence(internal_state);
 	}
 
-	[[gnu::flatten]] constexpr void final(digest_span_t out) const noexcept {
-		const auto buffer_used = std::span<const std::byte>(buffer).first(buffer_usage());
+	template <byte_like Byte> constexpr void final_from(std::span<const Byte> source, digest_span_t out) const noexcept {
+		CTHASH_ASSERT(source.size() < buffer.size());
 
 		value_type acc = converge_conditionaly();
 
@@ -211,13 +231,18 @@ template <size_t Bits> struct xxhash {
 		acc += static_cast<value_type>(length);
 
 		// step 5: consume remainder (not finished block from buffer)
-		acc = config::consume_remaining(acc, buffer_used);
+		acc = config::consume_remaining(acc, source);
 
 		// step 6: final mix/avalanche
 		acc = config::avalanche(acc);
 
 		// convert to big endian representation
 		unwrap_bigendian_number<value_type>{out} = acc;
+	}
+
+	[[gnu::flatten]] constexpr void final(digest_span_t out) const noexcept {
+		const auto buffer_used = std::span<const std::byte>(buffer).first(buffer_usage());
+		final_from(buffer_used, out);
 	}
 
 	[[gnu::flatten]] constexpr auto final() const noexcept -> tagged_hash_value<tag> {
