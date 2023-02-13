@@ -27,4 +27,7 @@ int main(int argc, char ** argv) {
 	std::cout << "shake-256/64   = " << cthash::shake256{}.update(in).final<64>() << "\n";
 	std::cout << "shake-256/128  = " << cthash::shake256{}.update(in).final<128>() << "\n";
 	std::cout << "shake-256/1024 = " << cthash::shake256{}.update(in).final<1024>() << "\n";
+
+	std::cout << "      xxhash32 = " << cthash::xxhash32{}.update(in).final() << "\n";
+	std::cout << "      xxhash64 = " << cthash::xxhash64{}.update(in).final() << "\n";
 }
