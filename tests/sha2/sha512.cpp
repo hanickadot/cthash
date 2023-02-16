@@ -38,7 +38,7 @@ TEST_CASE("sha512 internal buffer at the end (two bytes)") {
 	// rest of the block must be zeros
 	for (int i = 0; i != 128; ++i) {
 		if (i > 2 && i < 127) {
-			REQUIRE(unsigned(h.block[i]) == unsigned{0b0000'0000u});
+			REQUIRE(unsigned(h.block[static_cast<size_t>(i)]) == unsigned{0b0000'0000u});
 		}
 	}
 }
@@ -52,7 +52,7 @@ TEST_CASE("sha512 internal buffer at the end (111B)") {
 
 	// message
 	for (int i = 0; i != 111; ++i) {
-		REQUIRE(unsigned(h.block[i]) == unsigned(42));
+		REQUIRE(unsigned(h.block[static_cast<size_t>(i)]) == unsigned(42));
 	}
 
 	// terminator
@@ -89,7 +89,7 @@ TEST_CASE("sha512 internal buffer at the end (112B, first block)") {
 
 	// there is no message (as it was in previous block)
 	for (int i = 0; i != 112; ++i) {
-		REQUIRE(unsigned(h.block[i]) == 42u);
+		REQUIRE(unsigned(h.block[static_cast<size_t>(i)]) == 42u);
 	}
 
 	// terminator
@@ -97,7 +97,7 @@ TEST_CASE("sha512 internal buffer at the end (112B, first block)") {
 
 	// zero-padding
 	for (int i = 113; i != 128; ++i) {
-		REQUIRE(unsigned(h.block[i]) == 0u);
+		REQUIRE(unsigned(h.block[static_cast<size_t>(i)]) == 0u);
 	}
 
 	STATIC_REQUIRE(h.block.size() == 128u);
@@ -112,7 +112,7 @@ TEST_CASE("sha512 internal buffer at the end (112B, second block)") {
 
 	// there is no message (as it was in previous block)
 	for (int i = 0; i != 112; ++i) {
-		REQUIRE(unsigned(h.block[i]) == unsigned(0));
+		REQUIRE(unsigned(h.block[static_cast<size_t>(i)]) == unsigned(0));
 	}
 
 	// bit length

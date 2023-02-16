@@ -20,9 +20,9 @@ namespace sha256t_support {
 	}
 
 	template <unsigned Width> static consteval auto generate_signature(unsigned t) {
-		const char a = '0' + ((t / 100u) % 10u);
-		const char b = '0' + ((t / 10u) % 10u);
-		const char c = '0' + ((t / 1u) % 10u);
+		const char a = '0' + static_cast<char>((t / 100u) % 10u);
+		const char b = '0' + static_cast<char>((t / 10u) % 10u);
+		const char c = '0' + static_cast<char>((t / 1u) % 10u);
 
 		if constexpr (Width == 1) {
 			return std::array<char, Width + 8u>{'S', 'H', 'A', '-', '5', '1', '2', '/', c};

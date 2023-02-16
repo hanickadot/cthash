@@ -28,7 +28,7 @@ TEST_CASE("xxhash update", "[xxh-basic]") {
 	REQUIRE(h.buffer.size() == 16u);
 	REQUIRE(unsigned(h.buffer[0]) == 0xEFu);
 	for (int i = 1; i != h.buffer.size(); ++i) {
-		REQUIRE(unsigned(h.buffer[i]) == 0u);
+		REQUIRE(unsigned(h.buffer[static_cast<size_t>(i)]) == 0u);
 	}
 
 	h.update(std::span(arr).first(1));
@@ -38,13 +38,13 @@ TEST_CASE("xxhash update", "[xxh-basic]") {
 	REQUIRE(unsigned(h.buffer[0]) == 0xEFu);
 	REQUIRE(unsigned(h.buffer[1]) == 0xEFu);
 	for (int i = 2; i != h.buffer.size(); ++i) {
-		REQUIRE(unsigned(h.buffer[i]) == 0u);
+		REQUIRE(unsigned(h.buffer[static_cast<size_t>(i)]) == 0u);
 	}
 
 	h.update(std::span(arr).first(14));
 	REQUIRE(h.length == 16u);
 	for (int i = 0; i != h.buffer.size(); ++i) {
-		REQUIRE(unsigned(h.buffer[i]) == 0xEFu);
+		REQUIRE(unsigned(h.buffer[static_cast<size_t>(i)]) == 0xEFu);
 	}
 	REQUIRE(h.buffer_usage() == 0u);
 
@@ -64,7 +64,7 @@ TEST_CASE("xxhash update", "[xxh-basic]") {
 	h.update(std::span(arr).first(16));
 	REQUIRE(h.length == 32u);
 	for (int i = 0; i != h.buffer.size(); ++i) {
-		REQUIRE(unsigned(h.buffer[i]) == 0xEFu);
+		REQUIRE(unsigned(h.buffer[static_cast<size_t>(i)]) == 0xEFu);
 	}
 	REQUIRE(h.buffer_usage() == 0u);
 

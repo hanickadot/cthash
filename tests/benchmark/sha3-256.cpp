@@ -10,7 +10,7 @@ TEST_CASE("sha3-256 measurements", "[keccak-bench]") {
 	std::array<std::byte, 1024> input{};
 
 	for (int i = 0; i != (int)input.size(); ++i) {
-		input[i] = static_cast<std::byte>(i);
+		input[size_t(i)] = static_cast<std::byte>(i);
 	}
 
 	BENCHMARK("16 byte input") {
@@ -121,7 +121,7 @@ TEST_CASE("openssl sha3-256 measurements", "[keccak-bench][openssl]") {
 	std::array<std::byte, 1024> input{};
 
 	for (int i = 0; i != (int)input.size(); ++i) {
-		input[i] = static_cast<std::byte>(i);
+		input[static_cast<size_t>(i)] = static_cast<std::byte>(i);
 	}
 
 	BENCHMARK("16 byte input") {

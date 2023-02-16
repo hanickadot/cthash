@@ -31,7 +31,7 @@ template <typename Config, typename StageT, size_t StageLength, typename StateT,
 	static_assert(StageLength == Config::constants.size());
 
 	for (int i = 0; i != Config::constants.size(); ++i) {
-		const auto temp1 = h + Config::sum_e(e) + choice(e, f, g) + Config::constants[i] + w[i];
+		const auto temp1 = h + Config::sum_e(e) + choice(e, f, g) + Config::constants[static_cast<size_t>(i)] + w[static_cast<size_t>(i)];
 		const auto temp2 = Config::sum_a(a) + majority(a, b, c);
 
 		// move around (that's rotate)
@@ -53,7 +53,7 @@ template <typename Config, typename StageT, size_t StageLength, typename StateT,
 
 	// add store back
 	for (int i = 0; i != (int)state.size(); ++i) {
-		state[i] += wvar[i];
+		state[static_cast<size_t>(i)] += wvar[static_cast<size_t>(i)];
 	}
 }
 

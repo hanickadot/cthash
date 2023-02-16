@@ -59,12 +59,12 @@ template <typename Config> struct internal_hasher {
 
 		// fill first part with chunk
 		for (int i = 0; i != int(first_part_size); ++i) {
-			w[i] = cast_from_bytes<staging_item_t>(chunk.subspan(i * sizeof(staging_item_t)).template first<sizeof(staging_item_t)>());
+			w[static_cast<size_t>(i)] = cast_from_bytes<staging_item_t>(chunk.subspan(static_cast<size_t>(i) * sizeof(staging_item_t)).template first<sizeof(staging_item_t)>());
 		}
 
 		// fill the rest (generify)
 		for (int i = int(first_part_size); i != int(staging_size); ++i) {
-			w[i] = w[i - 16] + config.sigma_0(w[i - 15]) + w[i - 7] + config.sigma_1(w[i - 2]);
+			w[static_cast<size_t>(i)] = w[static_cast<size_t>(i - 16)] + config.sigma_0(w[static_cast<size_t>(i - 15)]) + w[static_cast<size_t>(i - 7)] + config.sigma_1(w[static_cast<size_t>(i - 2)]);
 		}
 
 		return w;
@@ -173,7 +173,7 @@ template <typename Config> struct internal_hasher {
 		static_assert(values_for_output <= config.initial_values.size());
 
 		for (int i = 0; i != values_for_output; ++i) {
-			unwrap_bigendian_number<state_item_t>{out.subspan(i * sizeof(state_item_t)).template first<sizeof(state_item_t)>()} = hash[i];
+			unwrap_bigendian_number<state_item_t>{out.subspan(static_cast<size_t>(i) * sizeof(state_item_t)).template first<sizeof(state_item_t)>()} = hash[static_cast<size_t>(i)];
 		}
 	}
 
@@ -189,7 +189,7 @@ template <typename Config> struct internal_hasher {
 		std::array<std::byte, sizeof(state_item_t) * config.initial_values.size()> tmp_buffer;
 
 		for (int i = 0; i != (int)config.initial_values.size(); ++i) {
-			unwrap_bigendian_number<state_item_t>{std::span(tmp_buffer).subspan(i * sizeof(state_item_t)).template first<sizeof(state_item_t)>()} = hash[i];
+			unwrap_bigendian_number<state_item_t>{std::span(tmp_buffer).subspan(static_cast<size_t>(i) * sizeof(state_item_t)).template first<sizeof(state_item_t)>()} = hash[static_cast<size_t>(i)];
 		}
 
 		std::copy_n(tmp_buffer.data(), digest_bytes, out.data());

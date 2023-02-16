@@ -161,7 +161,7 @@ template <size_t Bits> struct xxhash {
 		const auto buffer_remaining = std::span(buffer).subspan(buffer_usage());
 
 		// everything we insert here is counting as part of input (even if we process it later)
-		length += input.size();
+		length += static_cast<uint8_t>(input.size());
 
 		// if there is remaining data from previous...
 		if (buffer_remaining.size() != buffer.size()) {
@@ -197,7 +197,7 @@ template <size_t Bits> struct xxhash {
 	}
 
 	template <byte_like Byte> [[gnu::flatten]] constexpr auto update_and_final(std::span<const Byte> input) noexcept {
-		length = input.size();
+		length = static_cast<value_type>(input.size());
 		process_blocks(input);
 		tagged_hash_value<tag> output;
 		final_from(input, output);

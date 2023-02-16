@@ -84,7 +84,7 @@ struct state_1600_ref: std::span<uint64_t, (5u * 5u)> {
 		theta(state);
 		rho_pi(state);
 		chi(state);
-		state[0] ^= rc[i];
+		state[0] ^= rc[static_cast<size_t>(i)];
 	};
 }
 

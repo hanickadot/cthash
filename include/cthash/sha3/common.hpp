@@ -73,7 +73,7 @@ template <typename Config> struct basic_keccak_hasher {
 				// xor unaligned value and move to aligned if possible
 				const size_t prefix_size = std::min(input.size(), sizeof(value_t) - (position % sizeof(value_t)));
 				internal_state[position / sizeof(uint64_t)] ^= convert_prefix_into_value<value_t>(input.first(prefix_size), static_cast<unsigned>(position % sizeof(value_t)));
-				position += prefix_size;
+				position += static_cast<uint8_t>(prefix_size);
 				input = input.subspan(prefix_size);
 			}
 
@@ -81,7 +81,7 @@ template <typename Config> struct basic_keccak_hasher {
 			while (input.size() >= sizeof(value_t)) {
 				// xor aligned value and move to next
 				internal_state[position / sizeof(value_t)] ^= cast_from_le_bytes<value_t>(input.template first<sizeof(value_t)>());
-				position += sizeof(value_t);
+				position += static_cast<uint8_t>(sizeof(value_t));
 				input = input.subspan(sizeof(value_t));
 			}
 
@@ -89,7 +89,7 @@ template <typename Config> struct basic_keccak_hasher {
 			if (not input.empty()) {
 				// xor and finish
 				internal_state[position / sizeof(value_t)] ^= convert_prefix_into_value<value_t>(input, 0u);
-				position += input.size();
+				position += static_cast<uint8_t>(input.size());
 			}
 
 			return position;
@@ -100,7 +100,7 @@ template <typename Config> struct basic_keccak_hasher {
 
 			std::transform(place.data(), place.data() + place.size(), input.data(), place.data(), [](std::byte lhs, auto rhs) { return lhs ^ static_cast<std::byte>(rhs); });
 
-			position += place.size();
+			position += static_cast<uint8_t>(place.size());
 			return position;
 		}
 	}
