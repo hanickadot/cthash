@@ -20,10 +20,12 @@ template <std::unsigned_integral T, byte_like Byte> constexpr auto cast_from_byt
 		}
 		(std::make_index_sequence<sizeof(T)>());
 	} else {
+		T t;
+		std::memcpy(&t, in.data(), sizeof(T));
 		if constexpr (std::endian::native == std::endian::little) {
-			return static_cast<T>(internal::byteswap(*std::bit_cast<const T *>(in.data())));
+			return internal::byteswap(t);
 		} else {
-			return static_cast<T>(*std::bit_cast<const T *>(in.data()));
+			return t;
 		}
 	}
 }
@@ -35,10 +37,12 @@ template <std::unsigned_integral T, byte_like Byte> constexpr auto cast_from_le_
 		}
 		(std::make_index_sequence<sizeof(T)>());
 	} else {
+		T t;
+		std::memcpy(&t, in.data(), sizeof(T));
 		if constexpr (std::endian::native == std::endian::big) {
-			return static_cast<T>(internal::byteswap(*std::bit_cast<const T *>(in.data())));
+			return internal::byteswap(t);
 		} else {
-			return static_cast<T>(*std::bit_cast<const T *>(in.data()));
+			return t;
 		}
 	}
 }
