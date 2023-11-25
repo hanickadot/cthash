@@ -162,6 +162,33 @@ TEST_CASE("sha3-256 formatting (binary explicitly)") {
 		"0101001110110100010011111011");
 }
 
+template <typename Container = std::string> auto materialize(auto && range) {
+	auto result = Container{};
+	result.resize(range.size());
+	auto [in, out] = std::ranges::copy(range, result.begin());
+	REQUIRE(in == range.end());
+	REQUIRE(out == result.end());
+	return result;
+}
+
+TEST_CASE("static and dynamic path generates same results") {
+	auto hash = cthash::sha3_256().update("hanicka").final();
+
+	REQUIRE(std::format("{:base2}", hash) == materialize(hash | cthash::base2_encode));
+	REQUIRE(std::format("{:binary}", hash) == materialize(hash | cthash::binary_encode));
+	REQUIRE(std::format("{:base4}", hash) == materialize(hash | cthash::base4_encode));
+	REQUIRE(std::format("{:base8}", hash) == materialize(hash | cthash::base8_encode));
+	REQUIRE(std::format("{:octal}", hash) == materialize(hash | cthash::octal_encode));
+	REQUIRE(std::format("{:base16}", hash) == materialize(hash | cthash::base16_encode));
+	REQUIRE(std::format("{:hexdec}", hash) == materialize(hash | cthash::hexdec_encode));
+	REQUIRE(std::format("{:base32}", hash) == materialize(hash | cthash::base32_encode));
+	REQUIRE(std::format("{:base32_no_padding}", hash) == materialize(hash | cthash::base32_no_padding_encode));
+	REQUIRE(std::format("{:z_base32}", hash) == materialize(hash | cthash::z_base32_encode));
+	REQUIRE(std::format("{:base64}", hash) == materialize(hash | cthash::base64_encode));
+	REQUIRE(std::format("{:base64url}", hash) == materialize(hash | cthash::base64url_encode));
+	REQUIRE(std::format("{:base64_no_padding}", hash) == materialize(hash | cthash::base64_no_padding_encode));
+}
+
 TEST_CASE("sha3-256 formatting (shortening)") {
 	auto hash = cthash::sha3_256().final();
 	auto str = std::format("{:hexdec}..{:hexdec}", hash.prefix<3>(), hash.suffix<3>());
