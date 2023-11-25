@@ -151,6 +151,17 @@ TEST_CASE("sha3-256 formatting (base64url explicitly)") {
 	REQUIRE(str == "j4sLivTDcekXkbHdstB4hmHdaHBgQEr2MglxvMU7RPs");
 }
 
+TEST_CASE("sha3-256 formatting (binary explicitly)") {
+	auto hash = cthash::sha3_256().update("hanicka").final();
+	auto str = std::format("{:binary}", hash);
+
+	REQUIRE(str ==
+		"1000111110001011000010111000101011110100110000110111000111101001000101111001"
+		"0001101100011101110110110010110100000111100010000110011000011101110101101000"
+		"0111000001100000010000000100101011110110001100100000100101110001101111001100"
+		"0101001110110100010011111011");
+}
+
 TEST_CASE("sha3-256 formatting (shortening)") {
 	auto hash = cthash::sha3_256().final();
 	auto str = std::format("{:hexdec}..{:hexdec}", hash.prefix<3>(), hash.suffix<3>());
