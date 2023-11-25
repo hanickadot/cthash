@@ -109,26 +109,15 @@ static_assert(has_alt_name<encoding::hexdec>);
 
 template <typename T, typename... Ts> concept one_from = (std::same_as<T, Ts> || ... || false);
 
-template <typename Encoding> constexpr size_t longest_name_for() {
-	return Encoding::name.size();
-}
-
-template <has_alt_name Encoding> constexpr size_t longest_name_for() {
-	return std::max(Encoding::name.size(), Encoding::alt_name.size());
-}
+template <typename Encoding> constexpr size_t longest_name_for = Encoding::name.size();
+template <has_alt_name Encoding> constexpr size_t longest_name_for<Encoding> = std::max(Encoding::name.size(), Encoding::alt_name.size());
 
 template <typename Encoding> constexpr bool match_encoding(std::string_view name) noexcept {
-	if (Encoding::name == name) {
-		return true;
-	}
+	return Encoding::name == name;
+}
 
-	if constexpr (has_alt_name<Encoding>) {
-		if (Encoding::alt_name == name) {
-			return true;
-		}
-	}
-
-	return false;
+template <has_alt_name Encoding> constexpr bool match_encoding(std::string_view name) noexcept {
+	return Encoding::name == name || Encoding::alt_name == name;
 }
 
 template <typename... List> struct dynamic_encodings<encoding::list<List...>>: std::variant<List...> {
@@ -148,7 +137,8 @@ template <typename... List> struct dynamic_encodings<encoding::list<List...>>: s
 	static constexpr auto select_encoding(std::string_view name) -> super {
 		std::optional<super> output{std::nullopt};
 
-		const auto success = (assign_encoding<List>(name, output) || ... || false);
+		// I'm not using bool to avoid warning to have better code coverage
+		const auto success = (unsigned(assign_encoding<List>(name, output)) | ... | 0u);
 
 		if (!success) {
 			throw std::invalid_argument{"unknown encoding name"};
@@ -159,9 +149,7 @@ template <typename... List> struct dynamic_encodings<encoding::list<List...>>: s
 		return *output;
 	}
 
-	static constexpr size_t longest_name() noexcept {
-		return std::max({longest_name_for<List>()...});
-	}
+	static constexpr size_t longest_name_size = std::max({longest_name_for<List>...});
 
 	constexpr dynamic_encodings(std::string_view name): super(select_encoding(name)) { }
 	constexpr dynamic_encodings(one_from<List...> auto enc) noexcept: super(enc) { }
@@ -186,7 +174,7 @@ template <typename Encoding, typename DefaultEncoding = encoding::hexdec, typena
 	}
 
 	// this will copy it into buffer to compare
-	std::array<char, Encoding::longest_name() + 1u> buffer{};
+	std::array<char, Encoding::longest_name_size> buffer{};
 	auto out = buffer.begin();
 
 	for (;;) {

@@ -33,4 +33,6 @@ TEST_CASE("select hexdec encoding") {
 		INFO(E::name);
 		REQUIRE(match_encoding(e, "base64_no_padding"));
 	});
+
+	REQUIRE_THROWS_AS(cthash::select_runtime_encoding("unexisting"sv), std::invalid_argument);
 }
