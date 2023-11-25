@@ -1,7 +1,7 @@
-#include "../internal/support.hpp"
-#include <cthash/sha2/sha256.hpp>
 #include <catch2/benchmark/catch_benchmark.hpp>
 #include <catch2/catch_test_macros.hpp>
+#include "../internal/support.hpp"
+#include <cthash/sha2/sha256.hpp>
 
 using namespace cthash::literals;
 
@@ -129,4 +129,11 @@ TEST_CASE("sha256 long hash over 512MB", "[.long]") {
 	const auto r = h.final();
 
 	REQUIRE(r == "9acca8e8c22201155389f65abbf6bc9723edc7384ead80503839f49dcc56d767"_sha256);
+}
+
+TEST_CASE("sha256 formatting") {
+	auto hash = cthash::sha256().update("hi there!").final();
+	auto str = std::format("{:base64}", hash);
+
+	REQUIRE(str == "PjbTYi9a2tAQgMwhILtywHFOzsYRjrlSNYZBC3Q1roA=");
 }
