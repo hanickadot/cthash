@@ -77,14 +77,12 @@ StatementAttributeLikeMacros:
   - Q_EMIT
 IncludeBlocks:   Merge
 IncludeCategories:
-  - Regex:           '<iostream>'
-    Priority:        9
   - Regex:           '^<version>$'
     Priority:        3
     SortPriority:    0
     CaseSensitive:   false
   - Regex:           '^<catch2/.+>$'
-    Priority:        8
+    Priority:        0
     SortPriority:    0
     CaseSensitive:   false
   - Regex:           '^".+/.+"$'
@@ -99,8 +97,12 @@ IncludeCategories:
     Priority:        4
     SortPriority:    0
     CaseSensitive:   false
-  - Regex:           '^<cthash/.+>$'
+  - Regex:           '^<cthash/.+/.+>$'
     Priority:        6
+    SortPriority:    0
+    CaseSensitive:   false
+  - Regex:           '^<luna/.+>$'
+    Priority:        5
     SortPriority:    0
     CaseSensitive:   false
   - Regex:           '^<(c[^.]+|.+\.h)>$'
@@ -125,6 +127,7 @@ InsertTrailingCommas: None
 JavaScriptQuotes: Leave
 JavaScriptWrapImports: true
 KeepEmptyLinesAtTheStartOfBlocks: false
+LambdaBodyIndentation: OuterScope
 MacroBlockBegin: ''
 MacroBlockEnd:   ''
 MaxEmptyLinesToKeep: 1
@@ -140,6 +143,7 @@ PenaltyReturnTypeOnItsOwnLine: 60
 PenaltyIndentedWhitespace: 0
 PointerAlignment: Middle
 ReflowComments:  true
+RequiresClausePosition: SingleLine
 SortIncludes:    true
 SortJavaStaticImport: Before
 SortUsingDeclarations: true
@@ -169,4 +173,5 @@ Standard:        c++20
 TabWidth:        4
 UseCRLF:         false
 UseTab:          Always
+WhitespaceSensitiveMacros: []
 

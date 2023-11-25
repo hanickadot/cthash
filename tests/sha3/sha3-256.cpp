@@ -1,6 +1,6 @@
+#include <catch2/catch_test_macros.hpp>
 #include "../internal/support.hpp"
 #include <cthash/sha3/sha3-256.hpp>
-#include <catch2/catch_test_macros.hpp>
 #include <iostream>
 
 using namespace cthash::literals;
@@ -113,4 +113,33 @@ TEST_CASE("sha3-256 stability") {
 
 	const auto r0 = h.final();
 	REQUIRE(r0 == "af2e33605dbcb6f37facfcf7b999e068d25c38e12c86c33786cc207134812e6b"_sha3_256);
+}
+
+TEST_CASE("sha3-256 printing") {
+	auto hash = cthash::sha3_256().final();
+	std::ostringstream ss;
+	ss << hash;
+
+	REQUIRE(ss.str() == "a7ffc6f8bf1ed76651c14756a061d662f580ff4de43b49fa82d80a4b80f8434a");
+}
+
+TEST_CASE("sha3-256 formatting") {
+	auto hash = cthash::sha3_256().final();
+	auto str = std::format("{}", hash);
+
+	REQUIRE(str == "a7ffc6f8bf1ed76651c14756a061d662f580ff4de43b49fa82d80a4b80f8434a");
+}
+
+TEST_CASE("sha3-256 formatting (hexdec explicitly)") {
+	auto hash = cthash::sha3_256().final();
+	auto str = std::format("{:hexdec}", hash);
+
+	REQUIRE(str == "a7ffc6f8bf1ed76651c14756a061d662f580ff4de43b49fa82d80a4b80f8434a");
+}
+
+TEST_CASE("sha3-256 formatting (z_base32 explicitly)") {
+	auto hash = cthash::sha3_256().final();
+	auto str = std::format("{:zbase32}", hash);
+
+	REQUIRE(str == "w99hp6f9d5mscwqbe7mkyaqscm4ab94pho7wu6wn5yfrzy8aepfy");
 }

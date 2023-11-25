@@ -7,9 +7,11 @@ add_executable(test-runner ${TESTS_SOURCES})
 option(MEASURE_OPENSSL "Measure also OpenSSL" ON)
 
 if (MEASURE_OPENSSL)
-find_package(OpenSSL REQUIRED Crypto)
+find_package(OpenSSL COMPONENTS Crypto)
+if (OpenSSL_FOUND)
 target_link_libraries(test-runner PRIVATE OpenSSL::Crypto)
 target_compile_definitions(test-runner PRIVATE OPENSSL_BENCHMARK OPENSSL_SUPPRESS_DEPRECATED)
+endif()
 endif()
 
 target_link_libraries(test-runner PRIVATE Catch2::Catch2WithMain cthash)
