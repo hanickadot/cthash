@@ -144,6 +144,13 @@ TEST_CASE("sha3-256 formatting (z_base32 explicitly)") {
 	REQUIRE(str == "w99hp6f9d5mscwqbe7mkyaqscm4ab94pho7wu6wn5yfrzy8aepfy");
 }
 
+TEST_CASE("sha3-256 formatting (base64url explicitly)") {
+	auto hash = cthash::sha3_256().update("hanicka").final();
+	auto str = std::format("{:base64url}", hash);
+
+	REQUIRE(str == "j4sLivTDcekXkbHdstB4hmHdaHBgQEr2MglxvMU7RPs");
+}
+
 TEST_CASE("sha3-256 formatting (shortening)") {
 	auto hash = cthash::sha3_256().final();
 	auto str = std::format("{:hexdec}..{:hexdec}", hash.prefix<3>(), hash.suffix<3>());
