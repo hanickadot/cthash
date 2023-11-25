@@ -42,6 +42,18 @@ template <size_t N> struct hash_value: std::array<std::byte, N> {
 	template <typename CharT, typename Traits> constexpr friend auto & operator<<(std::basic_ostream<CharT, Traits> & os, const hash_value & val) {
 		return val.print_into(os);
 	}
+
+	template <size_t PrefixN> constexpr auto prefix() const noexcept requires(PrefixN <= N) {
+		hash_value<PrefixN> output{};
+		std::ranges::copy(this->begin(), this->begin() + PrefixN, output.begin());
+		return output;
+	}
+
+	template <size_t SuffixN> constexpr auto suffix() const noexcept requires(SuffixN <= N) {
+		hash_value<SuffixN> output{};
+		std::ranges::copy(this->end() - SuffixN, this->end(), output.begin());
+		return output;
+	}
 };
 
 template <typename CharT, size_t N> hash_value(const CharT (&)[N]) -> hash_value<(N - 1u) / 2u>;

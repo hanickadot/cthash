@@ -143,3 +143,10 @@ TEST_CASE("sha3-256 formatting (z_base32 explicitly)") {
 
 	REQUIRE(str == "w99hp6f9d5mscwqbe7mkyaqscm4ab94pho7wu6wn5yfrzy8aepfy");
 }
+
+TEST_CASE("sha3-256 formatting (shortening)") {
+	auto hash = cthash::sha3_256().final();
+	auto str = std::format("{:hexdec}..{:hexdec}", hash.prefix<3>(), hash.suffix<3>());
+
+	REQUIRE(str == "a7ffc6..f8434a");
+}
