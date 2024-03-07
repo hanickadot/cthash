@@ -8,7 +8,7 @@ list(PREPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 include(colors)
 include(pedantic)
 
-option(CTHASH_TESTS "Enable CTHASH testing" ON)
+option(CTHASH_TESTS "Enable CTHASH testing" OFF)
 
 if (CTHASH_TESTS)
 	option(CTHASH_COVERAGE "Enable CTHASH test-coverage" ON)

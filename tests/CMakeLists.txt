@@ -1,10 +1,33 @@
 find_package(Catch2 3 REQUIRED)
 
-file(GLOB_RECURSE TESTS_SOURCES  LINK_DIRECTORIES false RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} "*.cpp")
 
-add_executable(test-runner ${TESTS_SOURCES})
+add_executable(test-runner
+	benchmark/sha3-256.cpp
+	benchmark/sha512.cpp
+	benchmark/sha256.cpp
+	sha2/sha512.cpp
+	sha2/sha256.cpp
+	sha2/sha512t.cpp
+	sha2/sha384.cpp
+	sha2/sha224.cpp
+	sha3/sha3-384.cpp
+	sha3/sha3-224.cpp
+	sha3/sha3-256.cpp
+	sha3/shake256.cpp
+	sha3/shake128.cpp
+	sha3/sha3-512.cpp
+	sha3/xor-overwrite.cpp
+	encoding/bit-buffer.cpp
+	encoding/base.cpp
+	encoding/chunk-of-bits.cpp
+	encoding/selection.cpp
+	value.cpp
+	xxhash/basics.cpp
+	keccak.cpp
+	hexdec.cpp
+)
 
-option(MEASURE_OPENSSL "Measure also OpenSSL" ON)
+option(MEASURE_OPENSSL "Measure also OpenSSL" OFF)
 
 if (MEASURE_OPENSSL)
 find_package(OpenSSL COMPONENTS Crypto)

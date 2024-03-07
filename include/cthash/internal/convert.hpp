@@ -15,7 +15,7 @@ template <typename It1, typename It2, typename It3> constexpr auto byte_copy(It1
 }
 
 template <std::unsigned_integral T, byte_like Byte> constexpr auto cast_from_bytes(std::span<const Byte, sizeof(T)> in) noexcept -> T {
-	if (std::is_constant_evaluated()) {
+	if consteval {
 		return [&]<size_t... Idx>(std::index_sequence<Idx...>) -> T {
 			return static_cast<T>(((static_cast<T>(in[Idx]) << ((sizeof(T) - 1u - Idx) * 8u)) | ...));
 		}(std::make_index_sequence<sizeof(T)>());
@@ -31,7 +31,7 @@ template <std::unsigned_integral T, byte_like Byte> constexpr auto cast_from_byt
 }
 
 template <std::unsigned_integral T, byte_like Byte> constexpr auto cast_from_le_bytes(std::span<const Byte, sizeof(T)> in) noexcept -> T {
-	if (std::is_constant_evaluated()) {
+	if consteval {
 		return [&]<size_t... Idx>(std::index_sequence<Idx...>) -> T {
 			return static_cast<T>(((static_cast<T>(in[Idx]) << static_cast<T>(Idx * 8u)) | ...));
 		}(std::make_index_sequence<sizeof(T)>());
