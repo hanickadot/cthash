@@ -6,3 +6,6 @@ target_link_libraries(sha256 cthash)
 
 add_executable(shake128 shake128.cpp)
 target_link_libraries(shake128 cthash)
+
+add_executable(xxhash xxhash.cpp)
+target_link_libraries(xxhash cthash)

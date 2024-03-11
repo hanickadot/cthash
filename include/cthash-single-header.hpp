@@ -597,8 +597,8 @@ namespace encoding {
 	using hexdec = base16;
 
 	struct base16_uppercase {
-		static constexpr std::string_view name = "base16_uppercase";
-		static constexpr std::string_view alt_name = "hexdec_uppercase";
+		static constexpr std::string_view name = "BASE16";
+		static constexpr std::string_view alt_name = "HEXDEC";
 
 		static constexpr char alphabet[] = "0123456789ABCDEF";
 	};
@@ -1071,8 +1071,7 @@ struct byte_hexdec_value {
 template <size_t N, typename CharT> constexpr auto hexdec_to_binary(std::span<const CharT, N * 2> in) -> std::array<std::byte, N> {
 	return [in]<size_t... Idx>(std::index_sequence<Idx...>) {
 		return std::array<std::byte, N>{static_cast<std::byte>(hexdec_to_value_alphabet[static_cast<size_t>(in[Idx * 2]) & 0b0111'1111u] << 4u | hexdec_to_value_alphabet[static_cast<size_t>(in[Idx * 2u + 1u]) & 0b0111'1111u])...};
-	}
-	(std::make_index_sequence<N>());
+	}(std::make_index_sequence<N>());
 }
 
 template <typename CharT, size_t N>
@@ -1191,26 +1190,6 @@ template <size_t N, typename CharT>
 struct std::formatter<cthash::hash_value<N>, CharT> {
 	using subject_type = cthash::hash_value<N>;
 	using default_encoding = cthash::encoding::hexdec;
-
-	cthash::runtime_encoding encoding{default_encoding{}};
-
-	template <typename ParseContext> constexpr auto parse(ParseContext & ctx) {
-		auto [enc, out] = cthash::select_encoding<cthash::runtime_encoding, default_encoding>(ctx);
-		this->encoding = enc;
-		return out;
-	}
-
-	template <typename FormatContext> constexpr auto format(const subject_type & value, FormatContext & ctx) const {
-		return encoding.visit([&]<typename SelectedEncoding>(SelectedEncoding) {
-			return std::ranges::copy(value | cthash::encode_to<SelectedEncoding, CharT>, ctx.out()).out;
-		});
-	}
-};
-
-template <typename Tag, size_t N, typename CharT>
-struct std::formatter<cthash::tagged_hash_value<Tag, N>, CharT> {
-	using subject_type = cthash::tagged_hash_value<Tag, N>;
-	using default_encoding = typename cthash::default_encoding<Tag>::encoding;
 
 	cthash::runtime_encoding encoding{default_encoding{}};
 
@@ -1563,7 +1542,7 @@ template <typename Config> struct internal_hasher {
 	}
 
 	[[gnu::always_inline]] constexpr void write_result_into(digest_span_t out) noexcept
-	requires(digest_bytes % sizeof(state_item_t) == 0u)
+		requires(digest_bytes % sizeof(state_item_t) == 0u)
 	{
 		// copy result to byte result
 		constexpr size_t values_for_output = digest_bytes / sizeof(state_item_t);
@@ -1575,7 +1554,7 @@ template <typename Config> struct internal_hasher {
 	}
 
 	[[gnu::always_inline]] constexpr void write_result_into(digest_span_t out) noexcept
-	requires(digest_bytes % sizeof(state_item_t) != 0u)
+		requires(digest_bytes % sizeof(state_item_t) != 0u)
 	{
 		// this is only used when digest doesn't align with output buffer
 
@@ -2049,8 +2028,7 @@ struct state_1600_ref: std::span<uint64_t, (5u * 5u)> {
 
 	[&]<size_t... Idx>(std::index_sequence<Idx...>) {
 		((state[Idx] ^= tmp[Idx % 5u]), ...);
-	}
-	(std::make_index_sequence<25>());
+	}(std::make_index_sequence<25>());
 }
 
 [[gnu::always_inline, gnu::flatten]] constexpr void rho_pi(state_1600_ref state) noexcept {
@@ -2058,8 +2036,7 @@ struct state_1600_ref: std::span<uint64_t, (5u * 5u)> {
 
 	[&]<size_t... Idx>(std::index_sequence<Idx...>) {
 		((state[pi[Idx]] = std::rotl(std::exchange(tmp, state[pi[Idx]]), rho[Idx])), ...);
-	}
-	(std::make_index_sequence<24>());
+	}(std::make_index_sequence<24>());
 }
 
 [[gnu::always_inline, gnu::flatten]] constexpr void chi(state_1600_ref state) noexcept {
@@ -2291,7 +2268,7 @@ template <typename Config> struct basic_keccak_hasher {
 	}
 
 	constexpr void squeeze(digest_span_t output_fixed) noexcept
-	requires((digest_length < rate) && digest_length != 0u)
+		requires((digest_length < rate) && digest_length != 0u)
 	{
 		auto output = std::span<std::byte>(output_fixed);
 
@@ -2332,14 +2309,14 @@ template <typename Config> struct basic_keccak_hasher {
 	}
 
 	constexpr void final(digest_span_t digest) noexcept
-	requires(digest_length != 0u)
+		requires(digest_length != 0u)
 	{
 		final_absorb();
 		squeeze(digest);
 	}
 
 	constexpr result_t final() noexcept
-	requires(digest_length != 0u)
+		requires(digest_length != 0u)
 	{
 		result_t output;
 		final(output);
@@ -2347,7 +2324,7 @@ template <typename Config> struct basic_keccak_hasher {
 	}
 
 	template <size_t N> constexpr auto final() noexcept
-	requires(digest_length == 0u)
+		requires(digest_length == 0u)
 	{
 		static_assert(N % 8u == 0u, "Only whole bytes are supported!");
 		using result_type = typename Config::template variable_digest<N>;

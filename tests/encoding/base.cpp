@@ -20,6 +20,7 @@ static auto materialize(const auto & range) {
 	REQUIRE(out == end);
 	REQUIRE(in == range.end());
 	REQUIRE(output.size() == output2.size());
+	REQUIRE(range.size() == output2.size());
 
 	return output2;
 }

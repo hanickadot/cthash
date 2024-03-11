@@ -62,8 +62,8 @@ namespace encoding {
 	using hexdec = base16;
 
 	struct base16_uppercase {
-		static constexpr std::string_view name = "base16_uppercase";
-		static constexpr std::string_view alt_name = "hexdec_uppercase";
+		static constexpr std::string_view name = "BASE16";
+		static constexpr std::string_view alt_name = "HEXDEC";
 
 		static constexpr char alphabet[] = "0123456789ABCDEF";
 	};

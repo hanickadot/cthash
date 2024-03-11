@@ -54,6 +54,9 @@ template <size_t N> struct hash_value: std::array<std::byte, N> {
 		std::ranges::copy(this->end() - SuffixN, this->end(), output.begin());
 		return output;
 	}
+	template <typename Encoding = cthash::encoding::hexdec, typename CharT = char> constexpr friend auto to_string(const hash_value & value) {
+		return std::ranges::to<std::basic_string<CharT>>(value | cthash::encode_to<Encoding, CharT>);
+	}
 };
 
 template <typename CharT, size_t N> hash_value(const CharT (&)[N]) -> hash_value<(N - 1u) / 2u>;
@@ -88,12 +91,20 @@ template <typename Tag, size_t = internal::digest_bytes_length_of<Tag>> struct t
 	template <typename CharT, typename Traits> constexpr friend auto & operator<<(std::basic_ostream<CharT, Traits> & os, const tagged_hash_value & val) {
 		return val.print_into(os);
 	}
+
+	template <typename Encoding = typename cthash::default_encoding<Tag>::encoding, typename CharT = char> constexpr friend auto to_string(const tagged_hash_value & value) {
+		return std::ranges::to<std::basic_string<CharT>>(value | cthash::encode_to<Encoding, CharT>);
+	}
 };
 
 template <typename T> concept variable_digest_length = T::digest_length_bit == 0u;
 
 template <size_t N, variable_digest_length Tag> struct variable_bit_length_tag: Tag {
 	static constexpr size_t digest_length_bit = N;
+};
+
+template <typename T> concept convertible_to_tagged_hash_value = requires(const T & obj) {
+	{ tagged_hash_value{obj} };
 };
 
 namespace literals {
@@ -147,6 +158,9 @@ struct std::formatter<cthash::tagged_hash_value<Tag, N>, CharT> {
 			return std::ranges::copy(value | cthash::encode_to<SelectedEncoding, CharT>, ctx.out()).out;
 		});
 	}
+};
+
+template <cthash::convertible_to_tagged_hash_value Type, typename CharT> struct std::formatter<Type, CharT>: std::formatter<decltype(cthash::tagged_hash_value{std::declval<Type>()}), CharT> {
 };
 
 } // namespace std

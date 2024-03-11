@@ -137,3 +137,13 @@ TEST_CASE("sha256 formatting") {
 
 	REQUIRE(str == "PjbTYi9a2tAQgMwhILtywHFOzsYRjrlSNYZBC3Q1roA=");
 }
+
+TEST_CASE("sha256 to_string") {
+	auto hash = cthash::sha256().update("hi there!").final();
+	auto str1 = to_string(hash);
+
+	REQUIRE(str1 == "3e36d3622f5adad01080cc2120bb72c0714ecec6118eb9523586410b7435ae80");
+
+	auto str2 = to_string<cthash::encoding::base64>(hash);
+	REQUIRE(str2 == "PjbTYi9a2tAQgMwhILtywHFOzsYRjrlSNYZBC3Q1roA=");
+}
