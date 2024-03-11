@@ -55,7 +55,17 @@ template <size_t N> struct hash_value: std::array<std::byte, N> {
 		return output;
 	}
 	template <typename Encoding = cthash::encoding::hexdec, typename CharT = char> constexpr friend auto to_string(const hash_value & value) {
-		return std::ranges::to<std::basic_string<CharT>>(value | cthash::encode_to<Encoding, CharT>);
+		const auto encoded = value | cthash::encode_to<Encoding, CharT>;
+#if __cpp_lib_ranges_to_container >= 202202L
+		return std::ranges::to<std::basic_string<CharT>>(encoded);
+#else
+		auto result = std::basic_string<CharT>{};
+		result.resize(encoded.size());
+		auto [i, o] = std::ranges::copy(encoded.begin(), encoded.end(), result.begin());
+		assert(i == encoded.end());
+		assert(o == result.end());
+		return result;
+#endif
 	}
 };
 
@@ -93,7 +103,7 @@ template <typename Tag, size_t = internal::digest_bytes_length_of<Tag>> struct t
 	}
 
 	template <typename Encoding = typename cthash::default_encoding<Tag>::encoding, typename CharT = char> constexpr friend auto to_string(const tagged_hash_value & value) {
-		return std::ranges::to<std::basic_string<CharT>>(value | cthash::encode_to<Encoding, CharT>);
+		return to_string<Encoding, CharT>(static_cast<const super &>(value));
 	}
 };
 
@@ -120,8 +130,10 @@ namespace literals {
 
 namespace std {
 
+#if __cpp_lib_format >= 201907L
+
 template <size_t N, typename CharT>
-struct std::formatter<cthash::hash_value<N>, CharT> {
+struct formatter<cthash::hash_value<N>, CharT> {
 	using subject_type = cthash::hash_value<N>;
 	using default_encoding = cthash::encoding::hexdec;
 
@@ -141,7 +153,7 @@ struct std::formatter<cthash::hash_value<N>, CharT> {
 };
 
 template <typename Tag, size_t N, typename CharT>
-struct std::formatter<cthash::tagged_hash_value<Tag, N>, CharT> {
+struct formatter<cthash::tagged_hash_value<Tag, N>, CharT> {
 	using subject_type = cthash::tagged_hash_value<Tag, N>;
 	using default_encoding = typename cthash::default_encoding<Tag>::encoding;
 
@@ -160,8 +172,10 @@ struct std::formatter<cthash::tagged_hash_value<Tag, N>, CharT> {
 	}
 };
 
-template <cthash::convertible_to_tagged_hash_value Type, typename CharT> struct std::formatter<Type, CharT>: std::formatter<decltype(cthash::tagged_hash_value{std::declval<Type>()}), CharT> {
+template <cthash::convertible_to_tagged_hash_value Type, typename CharT> struct formatter<Type, CharT>: formatter<decltype(cthash::tagged_hash_value{std::declval<Type>()}), CharT> {
 };
+
+#endif
 
 } // namespace std
 

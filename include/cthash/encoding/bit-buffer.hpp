@@ -8,6 +8,7 @@
 #include <ranges>
 #include <cassert>
 #include <concepts>
+#include <cstdint>
 
 namespace cthash {
 
@@ -73,7 +74,7 @@ public:
 	}
 	constexpr void push_empty_bits(size_t count) noexcept {
 		buffer = static_cast<storage_type>(buffer << count);
-		bits_available += count;
+		bits_available += static_cast<unsigned char>(count);
 	}
 
 	template <size_t Bits> constexpr void pop() noexcept requires(Bits <= capacity()) {

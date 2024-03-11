@@ -6,6 +6,7 @@
 #include <span>
 #include <type_traits>
 #include <cstddef>
+#include <cstdint>
 #include <cstring>
 
 namespace cthash {
