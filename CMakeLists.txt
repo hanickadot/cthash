@@ -36,13 +36,14 @@ option(CTHASH_EXAMPLES "Build CTHASH examples" ON)
 
 if (CTHASH_EXAMPLES)
 	add_subdirectory(examples)
+	
+	add_executable(example example.cpp)
+	target_link_libraries(example cthash)
+
+	add_executable(checksum checksum.cpp)
+	target_link_libraries(checksum cthash)
 endif()
 
-add_executable(example example.cpp)
-target_link_libraries(example cthash)
-
-add_executable(checksum checksum.cpp)
-target_link_libraries(checksum cthash)
 endif()
 
 add_subdirectory(include)
