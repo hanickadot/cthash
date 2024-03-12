@@ -27,7 +27,7 @@ template <size_t N> struct shake256_value: tagged_hash_value<variable_bit_length
 	using super = tagged_hash_value<variable_bit_length_tag<N, shake256_config>>;
 	using super::super;
 
-	template <typename CharT> explicit constexpr shake256_value(const internal::fixed_string<CharT, N / 8u> & in) noexcept: super{in} { }
+	template <typename CharT> explicit constexpr shake256_value(const fixed_string<CharT, N / 8u> & in) noexcept: super{in} { }
 
 	template <size_t K> constexpr friend bool operator==(const shake256_value & lhs, const shake256_value<K> & rhs) noexcept {
 		constexpr auto smallest_n = std::min(N, K);
@@ -44,11 +44,11 @@ template <size_t N> struct shake256_value: tagged_hash_value<variable_bit_length
 
 template <typename CharT, size_t N>
 requires(N % 2 == 0)
-shake256_value(const internal::fixed_string<CharT, N> &) -> shake256_value<N * 4u>;
+shake256_value(const fixed_string<CharT, N> &) -> shake256_value<N * 4u>;
 
 namespace literals {
 
-	template <internal::fixed_string Value>
+	template <fixed_string Value>
 	consteval auto operator""_shake256() {
 		return shake256_value(Value);
 	}

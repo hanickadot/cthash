@@ -63,7 +63,7 @@ using sha512_value = tagged_hash_value<sha512_config>;
 
 namespace literals {
 
-	template <internal::fixed_string Value>
+	template <fixed_string Value>
 	consteval auto operator""_sha512() {
 		return sha512_value(Value);
 	}

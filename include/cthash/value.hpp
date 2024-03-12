@@ -1,11 +1,11 @@
 #ifndef CTHASH_VALUE_HPP
 #define CTHASH_VALUE_HPP
 
+#include "fixed-string.hpp"
 #include "encoding/base.hpp"
 #include "encoding/encodings.hpp"
 #include "internal/algorithm.hpp"
 #include "internal/deduce.hpp"
-#include "internal/fixed-string.hpp"
 #include "internal/hexdec.hpp"
 #include <algorithm>
 #include <array>
@@ -24,7 +24,7 @@ template <size_t N> struct hash_value: std::array<std::byte, N> {
 	constexpr hash_value() noexcept: super{} { }
 	explicit constexpr hash_value(super && s) noexcept: super(s) { }
 	template <typename CharT> explicit constexpr hash_value(const CharT (&in)[N * 2u + 1u]) noexcept: super{internal::hexdec_to_binary<N>(std::span<const CharT, N * 2u>(in, N * 2u))} { }
-	template <typename CharT> explicit constexpr hash_value(const internal::fixed_string<CharT, N * 2u> & in) noexcept: super{internal::hexdec_to_binary<N>(std::span<const CharT, N * 2u>(in.data(), in.size()))} { }
+	template <typename CharT> explicit constexpr hash_value(const fixed_string<CharT, N * 2u> & in) noexcept: super{internal::hexdec_to_binary<N>(std::span<const CharT, N * 2u>(in.data(), in.size()))} { }
 
 	// comparison support
 	constexpr friend bool operator==(const hash_value & lhs, const hash_value & rhs) noexcept = default;
@@ -67,11 +67,24 @@ template <size_t N> struct hash_value: std::array<std::byte, N> {
 		return result;
 #endif
 	}
+	template <typename Encoding = cthash::encoding::hexdec, typename CharT = char> constexpr friend auto to_fixed_string(const hash_value & value) {
+		const auto encoded = value | cthash::encode_to<Encoding, CharT>;
+		// it's type dependendent so we can calculate the size...
+		constexpr size_t size_needed = (hash_value{} | cthash::encode_to<Encoding, CharT>).size();
+
+		auto result = cthash::fixed_string<CharT, size_needed>{nullptr};
+
+		auto [i, o] = std::ranges::copy(encoded.begin(), encoded.end(), result.begin());
+		assert(i == encoded.end());
+		assert(o == result.end());
+
+		return result;
+	}
 };
 
 template <typename CharT, size_t N> hash_value(const CharT (&)[N]) -> hash_value<(N - 1u) / 2u>;
 template <typename CharT, size_t N> hash_value(std::span<const CharT, N>) -> hash_value<N / 2u>;
-template <typename CharT, size_t N> hash_value(const internal::fixed_string<CharT, N> &) -> hash_value<N / 2u>;
+template <typename CharT, size_t N> hash_value(const fixed_string<CharT, N> &) -> hash_value<N / 2u>;
 
 template <typename> struct default_encoding {
 	using encoding = cthash::encoding::hexdec;
@@ -90,7 +103,7 @@ template <typename Tag, size_t = internal::digest_bytes_length_of<Tag>> struct t
 
 	using super = hash_value<N>;
 	using super::super;
-	template <typename CharT> explicit constexpr tagged_hash_value(const internal::fixed_string<CharT, N * 2u> & in) noexcept: super{in} { }
+	template <typename CharT> explicit constexpr tagged_hash_value(const fixed_string<CharT, N * 2u> & in) noexcept: super{in} { }
 
 	static constexpr size_t digest_length = N;
 
@@ -104,6 +117,10 @@ template <typename Tag, size_t = internal::digest_bytes_length_of<Tag>> struct t
 
 	template <typename Encoding = typename cthash::default_encoding<Tag>::encoding, typename CharT = char> constexpr friend auto to_string(const tagged_hash_value & value) {
 		return to_string<Encoding, CharT>(static_cast<const super &>(value));
+	}
+
+	template <typename Encoding = typename cthash::default_encoding<Tag>::encoding, typename CharT = char> constexpr friend auto to_fixed_string(const tagged_hash_value & value) {
+		return to_fixed_string<Encoding, CharT>(static_cast<const super &>(value));
 	}
 };
 
@@ -119,7 +136,7 @@ template <typename T> concept convertible_to_tagged_hash_value = requires(const 
 
 namespace literals {
 
-	template <internal::fixed_string Value>
+	template <fixed_string Value>
 	constexpr auto operator""_hash() {
 		return hash_value(Value);
 	}

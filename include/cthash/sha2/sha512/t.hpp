@@ -74,12 +74,12 @@ template <unsigned T> using sha512t_value = tagged_hash_value<sha512t_config<T>>
 
 namespace literals {
 
-	template <internal::fixed_string Value>
+	template <fixed_string Value>
 	consteval auto operator""_sha512_224() {
 		return sha512t_value<224>(Value);
 	}
 
-	template <internal::fixed_string Value>
+	template <fixed_string Value>
 	consteval auto operator""_sha512_256() {
 		return sha512t_value<256>(Value);
 	}

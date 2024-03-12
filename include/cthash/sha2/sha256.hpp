@@ -56,7 +56,7 @@ using sha256_value = tagged_hash_value<sha256_config>;
 
 namespace literals {
 
-	template <internal::fixed_string Value>
+	template <fixed_string Value>
 	consteval auto operator""_sha256() {
 		return sha256_value(Value);
 	}

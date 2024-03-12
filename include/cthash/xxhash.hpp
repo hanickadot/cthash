@@ -261,12 +261,12 @@ using xxhash64_value = tagged_hash_value<xxhash64::tag>;
 
 namespace literals {
 
-	template <internal::fixed_string Value>
+	template <fixed_string Value>
 	consteval auto operator""_xxh32() {
 		return xxhash32_value(Value);
 	}
 
-	template <internal::fixed_string Value>
+	template <fixed_string Value>
 	consteval auto operator""_xxh64() {
 		return xxhash64_value(Value);
 	}

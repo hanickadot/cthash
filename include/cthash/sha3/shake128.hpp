@@ -27,7 +27,7 @@ template <size_t N> struct shake128_value: tagged_hash_value<variable_bit_length
 	using super = tagged_hash_value<variable_bit_length_tag<N, shake128_config>>;
 	using super::super;
 
-	template <typename CharT> explicit constexpr shake128_value(const internal::fixed_string<CharT, N / 8u> & in) noexcept: super{in} { }
+	template <typename CharT> explicit constexpr shake128_value(const fixed_string<CharT, N / 8u> & in) noexcept: super{in} { }
 
 	template <size_t K> constexpr friend bool operator==(const shake128_value & lhs, const shake128_value<K> & rhs) noexcept {
 		static_assert(K > 0);
@@ -46,11 +46,11 @@ template <size_t N> struct shake128_value: tagged_hash_value<variable_bit_length
 
 template <typename CharT, size_t N>
 requires(N % 2 == 0)
-shake128_value(const internal::fixed_string<CharT, N> &) -> shake128_value<N * 4u>;
+shake128_value(const fixed_string<CharT, N> &) -> shake128_value<N * 4u>;
 
 namespace literals {
 
-	template <internal::fixed_string Value>
+	template <fixed_string Value>
 	consteval auto operator""_shake128() {
 		return shake128_value(Value);
 	}

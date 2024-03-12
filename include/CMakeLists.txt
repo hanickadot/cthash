@@ -10,6 +10,7 @@ target_sources(cthash INTERFACE FILE_SET headers TYPE HEADERS FILES
 	cthash/encoding/chunk-of-bits.hpp
 	cthash/encoding/concepts.hpp
 	cthash/encoding/encodings.hpp
+	cthash/fixed-string.hpp
 	cthash/hasher.hpp
 	cthash/simple.hpp
 	cthash/value.hpp
@@ -20,7 +21,6 @@ target_sources(cthash INTERFACE FILE_SET headers TYPE HEADERS FILES
 	cthash/internal/concepts.hpp
 	cthash/internal/convert.hpp
 	cthash/internal/deduce.hpp
-	cthash/internal/fixed-string.hpp
 	cthash/internal/hexdec.hpp
 	cthash/sha2/common.hpp
 	cthash/sha2/sha224.hpp

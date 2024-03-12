@@ -20,7 +20,7 @@ using sha3_256_value = tagged_hash_value<sha3_256_config>;
 
 namespace literals {
 
-	template <internal::fixed_string Value>
+	template <fixed_string Value>
 	consteval auto operator""_sha3_256() {
 		return sha3_256_value(Value);
 	}

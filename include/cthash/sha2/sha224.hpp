@@ -21,7 +21,7 @@ using sha224_value = tagged_hash_value<sha224_config>;
 
 namespace literals {
 
-	template <internal::fixed_string Value>
+	template <fixed_string Value>
 	consteval auto operator""_sha224() {
 		return sha224_value(Value);
 	}

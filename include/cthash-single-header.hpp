@@ -50,6 +50,58 @@ constexpr auto simple(const T & value, Args &&... args) noexcept {
 #ifndef CTHASH_VALUE_HPP
 #define CTHASH_VALUE_HPP
 
+#ifndef CTHASH_FIXED_STRING_HPP
+#define CTHASH_FIXED_STRING_HPP
+
+#include <algorithm>
+#include <span>
+#include <string_view>
+
+namespace cthash {
+
+template <typename CharT, size_t N> struct fixed_string: std::array<CharT, N> {
+	using super = std::array<CharT, N>;
+
+	consteval static auto from_string_literal(const CharT (&in)[N + 1]) -> std::array<CharT, N> {
+		std::array<CharT, N> out;
+		std::copy_n(in, N, out.data());
+		return out;
+	}
+
+	explicit constexpr fixed_string(std::nullptr_t) noexcept: super{} { }
+
+	consteval fixed_string(const CharT (&in)[N + 1]) noexcept: super{from_string_literal(in)} { }
+
+	using super::data;
+	using super::size;
+
+	constexpr operator std::span<const CharT, N>() const noexcept {
+		return std::span<const CharT, N>(data(), size());
+	}
+
+	constexpr operator std::span<const CharT>() const noexcept {
+		return std::span<const CharT>(data(), size());
+	}
+
+	constexpr operator std::basic_string_view<CharT>() const noexcept {
+		return std::basic_string_view<CharT>(data(), size());
+	}
+
+	constexpr friend bool operator==(const fixed_string &, const fixed_string &) noexcept = default;
+	constexpr friend bool operator==(const fixed_string & lhs, std::basic_string_view<CharT> rhs) noexcept {
+		return std::basic_string_view<CharT>{lhs} == rhs;
+	}
+	constexpr friend bool operator==(const fixed_string & lhs, const CharT * rhs) noexcept {
+		return std::basic_string_view<CharT>{lhs} == std::basic_string_view<CharT>{rhs};
+	}
+};
+
+template <typename CharT, size_t N> fixed_string(const CharT (&)[N]) -> fixed_string<CharT, N - 1>;
+
+} // namespace cthash
+
+#endif
+
 #ifndef CTHASH_ENCODING_BASE_HPP
 #define CTHASH_ENCODING_BASE_HPP
 
@@ -978,53 +1030,6 @@ template <typename Config> constexpr size_t digest_bytes_length_of = [] {
 } // namespace cthash::internal
 
 #endif
-#ifndef CTHASH_INTERNAL_FIXED_STRING_HPP
-#define CTHASH_INTERNAL_FIXED_STRING_HPP
-
-#include <algorithm>
-#include <span>
-#include <string_view>
-
-namespace cthash::internal {
-
-template <typename CharT, size_t N> struct fixed_string {
-	std::array<CharT, N> buffer;
-
-	consteval static auto from_string_literal(const CharT (&in)[N + 1]) -> std::array<CharT, N> {
-		std::array<CharT, N> out;
-		std::copy_n(in, N, out.data());
-		return out;
-	}
-
-	consteval fixed_string(const CharT (&in)[N + 1]) noexcept: buffer{from_string_literal(in)} { }
-
-	constexpr const CharT * data() const noexcept {
-		return buffer.data();
-	}
-
-	constexpr size_t size() const noexcept {
-		return buffer.size();
-	}
-
-	constexpr operator std::span<const CharT, N>() const noexcept {
-		return std::span<const CharT, N>(buffer.data(), buffer.size());
-	}
-
-	constexpr operator std::span<const CharT>() const noexcept {
-		return std::span<const CharT>(buffer.data(), buffer.size());
-	}
-
-	constexpr operator std::basic_string_view<CharT>() const noexcept {
-		return std::basic_string_view<CharT>(buffer.data(), buffer.size());
-	}
-};
-
-template <typename CharT, size_t N> fixed_string(const CharT (&)[N]) -> fixed_string<CharT, N - 1>;
-
-} // namespace cthash::internal
-
-#endif
-
 #ifndef CTHASH_INTERNAL_HEXDEC_HPP
 #define CTHASH_INTERNAL_HEXDEC_HPP
 
@@ -1103,7 +1108,7 @@ template <size_t N> struct hash_value: std::array<std::byte, N> {
 	constexpr hash_value() noexcept: super{} { }
 	explicit constexpr hash_value(super && s) noexcept: super(s) { }
 	template <typename CharT> explicit constexpr hash_value(const CharT (&in)[N * 2u + 1u]) noexcept: super{internal::hexdec_to_binary<N>(std::span<const CharT, N * 2u>(in, N * 2u))} { }
-	template <typename CharT> explicit constexpr hash_value(const internal::fixed_string<CharT, N * 2u> & in) noexcept: super{internal::hexdec_to_binary<N>(std::span<const CharT, N * 2u>(in.data(), in.size()))} { }
+	template <typename CharT> explicit constexpr hash_value(const fixed_string<CharT, N * 2u> & in) noexcept: super{internal::hexdec_to_binary<N>(std::span<const CharT, N * 2u>(in.data(), in.size()))} { }
 
 	// comparison support
 	constexpr friend bool operator==(const hash_value & lhs, const hash_value & rhs) noexcept = default;
@@ -1146,11 +1151,24 @@ template <size_t N> struct hash_value: std::array<std::byte, N> {
 		return result;
 #endif
 	}
+	template <typename Encoding = cthash::encoding::hexdec, typename CharT = char> constexpr friend auto to_fixed_string(const hash_value & value) {
+		const auto encoded = value | cthash::encode_to<Encoding, CharT>;
+		// it's type dependendent so we can calculate the size...
+		constexpr size_t size_needed = (hash_value{} | cthash::encode_to<Encoding, CharT>).size();
+
+		auto result = cthash::fixed_string<CharT, size_needed>{nullptr};
+
+		auto [i, o] = std::ranges::copy(encoded.begin(), encoded.end(), result.begin());
+		assert(i == encoded.end());
+		assert(o == result.end());
+
+		return result;
+	}
 };
 
 template <typename CharT, size_t N> hash_value(const CharT (&)[N]) -> hash_value<(N - 1u) / 2u>;
 template <typename CharT, size_t N> hash_value(std::span<const CharT, N>) -> hash_value<N / 2u>;
-template <typename CharT, size_t N> hash_value(const internal::fixed_string<CharT, N> &) -> hash_value<N / 2u>;
+template <typename CharT, size_t N> hash_value(const fixed_string<CharT, N> &) -> hash_value<N / 2u>;
 
 template <typename> struct default_encoding {
 	using encoding = cthash::encoding::hexdec;
@@ -1169,7 +1187,7 @@ template <typename Tag, size_t = internal::digest_bytes_length_of<Tag>> struct t
 
 	using super = hash_value<N>;
 	using super::super;
-	template <typename CharT> explicit constexpr tagged_hash_value(const internal::fixed_string<CharT, N * 2u> & in) noexcept: super{in} { }
+	template <typename CharT> explicit constexpr tagged_hash_value(const fixed_string<CharT, N * 2u> & in) noexcept: super{in} { }
 
 	static constexpr size_t digest_length = N;
 
@@ -1183,6 +1201,10 @@ template <typename Tag, size_t = internal::digest_bytes_length_of<Tag>> struct t
 
 	template <typename Encoding = typename cthash::default_encoding<Tag>::encoding, typename CharT = char> constexpr friend auto to_string(const tagged_hash_value & value) {
 		return to_string<Encoding, CharT>(static_cast<const super &>(value));
+	}
+
+	template <typename Encoding = typename cthash::default_encoding<Tag>::encoding, typename CharT = char> constexpr friend auto to_fixed_string(const tagged_hash_value & value) {
+		return to_fixed_string<Encoding, CharT>(static_cast<const super &>(value));
 	}
 };
 
@@ -1198,7 +1220,7 @@ template <typename T> concept convertible_to_tagged_hash_value = requires(const 
 
 namespace literals {
 
-	template <internal::fixed_string Value>
+	template <fixed_string Value>
 	constexpr auto operator""_hash() {
 		return hash_value(Value);
 	}
@@ -1799,7 +1821,7 @@ using sha256_value = tagged_hash_value<sha256_config>;
 
 namespace literals {
 
-	template <internal::fixed_string Value>
+	template <fixed_string Value>
 	consteval auto operator""_sha256() {
 		return sha256_value(Value);
 	}
@@ -1828,7 +1850,7 @@ using sha224_value = tagged_hash_value<sha224_config>;
 
 namespace literals {
 
-	template <internal::fixed_string Value>
+	template <fixed_string Value>
 	consteval auto operator""_sha224() {
 		return sha224_value(Value);
 	}
@@ -1905,7 +1927,7 @@ using sha512_value = tagged_hash_value<sha512_config>;
 
 namespace literals {
 
-	template <internal::fixed_string Value>
+	template <fixed_string Value>
 	consteval auto operator""_sha512() {
 		return sha512_value(Value);
 	}
@@ -1932,7 +1954,7 @@ using sha384_value = tagged_hash_value<sha384_config>;
 
 namespace literals {
 
-	template <internal::fixed_string Value>
+	template <fixed_string Value>
 	consteval auto operator""_sha384() {
 		return sha384_value(Value);
 	}
@@ -2017,12 +2039,12 @@ template <unsigned T> using sha512t_value = tagged_hash_value<sha512t_config<T>>
 
 namespace literals {
 
-	template <internal::fixed_string Value>
+	template <fixed_string Value>
 	consteval auto operator""_sha512_224() {
 		return sha512t_value<224>(Value);
 	}
 
-	template <internal::fixed_string Value>
+	template <fixed_string Value>
 	consteval auto operator""_sha512_256() {
 		return sha512t_value<256>(Value);
 	}
@@ -2454,7 +2476,7 @@ using sha3_224_value = tagged_hash_value<sha3_224_config>;
 
 namespace literals {
 
-	template <internal::fixed_string Value>
+	template <fixed_string Value>
 	consteval auto operator""_sha3_224() {
 		return sha3_224_value(Value);
 	}
@@ -2485,7 +2507,7 @@ using sha3_256_value = tagged_hash_value<sha3_256_config>;
 
 namespace literals {
 
-	template <internal::fixed_string Value>
+	template <fixed_string Value>
 	consteval auto operator""_sha3_256() {
 		return sha3_256_value(Value);
 	}
@@ -2516,7 +2538,7 @@ using sha3_384_value = tagged_hash_value<sha3_384_config>;
 
 namespace literals {
 
-	template <internal::fixed_string Value>
+	template <fixed_string Value>
 	consteval auto operator""_sha3_384() {
 		return sha3_384_value(Value);
 	}
@@ -2547,7 +2569,7 @@ using sha3_512_value = tagged_hash_value<sha3_512_config>;
 
 namespace literals {
 
-	template <internal::fixed_string Value>
+	template <fixed_string Value>
 	consteval auto operator""_sha3_512() {
 		return sha3_512_value(Value);
 	}
@@ -2585,7 +2607,7 @@ template <size_t N> struct shake128_value: tagged_hash_value<variable_bit_length
 	using super = tagged_hash_value<variable_bit_length_tag<N, shake128_config>>;
 	using super::super;
 
-	template <typename CharT> explicit constexpr shake128_value(const internal::fixed_string<CharT, N / 8u> & in) noexcept: super{in} { }
+	template <typename CharT> explicit constexpr shake128_value(const fixed_string<CharT, N / 8u> & in) noexcept: super{in} { }
 
 	template <size_t K> constexpr friend bool operator==(const shake128_value & lhs, const shake128_value<K> & rhs) noexcept {
 		static_assert(K > 0);
@@ -2604,11 +2626,11 @@ template <size_t N> struct shake128_value: tagged_hash_value<variable_bit_length
 
 template <typename CharT, size_t N>
 requires(N % 2 == 0)
-shake128_value(const internal::fixed_string<CharT, N> &) -> shake128_value<N * 4u>;
+shake128_value(const fixed_string<CharT, N> &) -> shake128_value<N * 4u>;
 
 namespace literals {
 
-	template <internal::fixed_string Value>
+	template <fixed_string Value>
 	consteval auto operator""_shake128() {
 		return shake128_value(Value);
 	}
@@ -2646,7 +2668,7 @@ template <size_t N> struct shake256_value: tagged_hash_value<variable_bit_length
 	using super = tagged_hash_value<variable_bit_length_tag<N, shake256_config>>;
 	using super::super;
 
-	template <typename CharT> explicit constexpr shake256_value(const internal::fixed_string<CharT, N / 8u> & in) noexcept: super{in} { }
+	template <typename CharT> explicit constexpr shake256_value(const fixed_string<CharT, N / 8u> & in) noexcept: super{in} { }
 
 	template <size_t K> constexpr friend bool operator==(const shake256_value & lhs, const shake256_value<K> & rhs) noexcept {
 		constexpr auto smallest_n = std::min(N, K);
@@ -2663,11 +2685,11 @@ template <size_t N> struct shake256_value: tagged_hash_value<variable_bit_length
 
 template <typename CharT, size_t N>
 requires(N % 2 == 0)
-shake256_value(const internal::fixed_string<CharT, N> &) -> shake256_value<N * 4u>;
+shake256_value(const fixed_string<CharT, N> &) -> shake256_value<N * 4u>;
 
 namespace literals {
 
-	template <internal::fixed_string Value>
+	template <fixed_string Value>
 	consteval auto operator""_shake256() {
 		return shake256_value(Value);
 	}
@@ -2935,12 +2957,12 @@ using xxhash64_value = tagged_hash_value<xxhash64::tag>;
 
 namespace literals {
 
-	template <internal::fixed_string Value>
+	template <fixed_string Value>
 	consteval auto operator""_xxh32() {
 		return xxhash32_value(Value);
 	}
 
-	template <internal::fixed_string Value>
+	template <fixed_string Value>
 	consteval auto operator""_xxh64() {
 		return xxhash64_value(Value);
 	}
