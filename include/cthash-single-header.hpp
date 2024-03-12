@@ -93,6 +93,7 @@ template <typename T> concept byte_range = requires() {
 #include <ranges>
 #include <cassert>
 #include <concepts>
+#include <cstdint>
 
 namespace cthash {
 
@@ -158,7 +159,7 @@ public:
 	}
 	constexpr void push_empty_bits(size_t count) noexcept {
 		buffer = static_cast<storage_type>(buffer << count);
-		bits_available += count;
+		bits_available += static_cast<unsigned char>(count);
 	}
 
 	template <size_t Bits> constexpr void pop() noexcept requires(Bits <= capacity()) {
@@ -1071,7 +1072,8 @@ struct byte_hexdec_value {
 template <size_t N, typename CharT> constexpr auto hexdec_to_binary(std::span<const CharT, N * 2> in) -> std::array<std::byte, N> {
 	return [in]<size_t... Idx>(std::index_sequence<Idx...>) {
 		return std::array<std::byte, N>{static_cast<std::byte>(hexdec_to_value_alphabet[static_cast<size_t>(in[Idx * 2]) & 0b0111'1111u] << 4u | hexdec_to_value_alphabet[static_cast<size_t>(in[Idx * 2u + 1u]) & 0b0111'1111u])...};
-	}(std::make_index_sequence<N>());
+	}
+	(std::make_index_sequence<N>());
 }
 
 template <typename CharT, size_t N>
@@ -1131,6 +1133,19 @@ template <size_t N> struct hash_value: std::array<std::byte, N> {
 		std::ranges::copy(this->end() - SuffixN, this->end(), output.begin());
 		return output;
 	}
+	template <typename Encoding = cthash::encoding::hexdec, typename CharT = char> constexpr friend auto to_string(const hash_value & value) {
+		const auto encoded = value | cthash::encode_to<Encoding, CharT>;
+#if __cpp_lib_ranges_to_container >= 202202L
+		return std::ranges::to<std::basic_string<CharT>>(encoded);
+#else
+		auto result = std::basic_string<CharT>{};
+		result.resize(encoded.size());
+		auto [i, o] = std::ranges::copy(encoded.begin(), encoded.end(), result.begin());
+		assert(i == encoded.end());
+		assert(o == result.end());
+		return result;
+#endif
+	}
 };
 
 template <typename CharT, size_t N> hash_value(const CharT (&)[N]) -> hash_value<(N - 1u) / 2u>;
@@ -1165,12 +1180,20 @@ template <typename Tag, size_t = internal::digest_bytes_length_of<Tag>> struct t
 	template <typename CharT, typename Traits> constexpr friend auto & operator<<(std::basic_ostream<CharT, Traits> & os, const tagged_hash_value & val) {
 		return val.print_into(os);
 	}
+
+	template <typename Encoding = typename cthash::default_encoding<Tag>::encoding, typename CharT = char> constexpr friend auto to_string(const tagged_hash_value & value) {
+		return to_string<Encoding, CharT>(static_cast<const super &>(value));
+	}
 };
 
 template <typename T> concept variable_digest_length = T::digest_length_bit == 0u;
 
 template <size_t N, variable_digest_length Tag> struct variable_bit_length_tag: Tag {
 	static constexpr size_t digest_length_bit = N;
+};
+
+template <typename T> concept convertible_to_tagged_hash_value = requires(const T & obj) {
+	{ tagged_hash_value{obj} };
 };
 
 namespace literals {
@@ -1186,8 +1209,19 @@ namespace literals {
 
 namespace std {
 
+#if __cpp_lib_format >= 201907L
+#define CTHASH_STDFMT_AVAILABLE 1
+#endif
+
+#if _LIBCPP_VERSION >= 170000
+// libc++ will define __cpp_lib_format macro in 19.0
+// https://github.com/llvm/llvm-project/issues/77773
+#define CTHASH_STDFMT_AVAILABLE 1
+#endif
+
+#ifdef CTHASH_STDFMT_AVAILABLE
 template <size_t N, typename CharT>
-struct std::formatter<cthash::hash_value<N>, CharT> {
+struct formatter<cthash::hash_value<N>, CharT> {
 	using subject_type = cthash::hash_value<N>;
 	using default_encoding = cthash::encoding::hexdec;
 
@@ -1205,6 +1239,31 @@ struct std::formatter<cthash::hash_value<N>, CharT> {
 		});
 	}
 };
+
+template <typename Tag, size_t N, typename CharT>
+struct formatter<cthash::tagged_hash_value<Tag, N>, CharT> {
+	using subject_type = cthash::tagged_hash_value<Tag, N>;
+	using default_encoding = typename cthash::default_encoding<Tag>::encoding;
+
+	cthash::runtime_encoding encoding{default_encoding{}};
+
+	template <typename ParseContext> constexpr auto parse(ParseContext & ctx) {
+		auto [enc, out] = cthash::select_encoding<cthash::runtime_encoding, default_encoding>(ctx);
+		this->encoding = enc;
+		return out;
+	}
+
+	template <typename FormatContext> constexpr auto format(const subject_type & value, FormatContext & ctx) const {
+		return encoding.visit([&]<typename SelectedEncoding>(SelectedEncoding) {
+			return std::ranges::copy(value | cthash::encode_to<SelectedEncoding, CharT>, ctx.out()).out;
+		});
+	}
+};
+
+template <cthash::convertible_to_tagged_hash_value Type, typename CharT> struct formatter<Type, CharT>: formatter<decltype(cthash::tagged_hash_value{std::declval<Type>()}), CharT> {
+};
+
+#endif
 
 } // namespace std
 
@@ -1308,6 +1367,7 @@ template <typename T> concept convertible_to_byte_span = requires(T && obj) //
 #include <span>
 #include <type_traits>
 #include <cstddef>
+#include <cstdint>
 #include <cstring>
 
 namespace cthash {
@@ -1542,7 +1602,7 @@ template <typename Config> struct internal_hasher {
 	}
 
 	[[gnu::always_inline]] constexpr void write_result_into(digest_span_t out) noexcept
-		requires(digest_bytes % sizeof(state_item_t) == 0u)
+	requires(digest_bytes % sizeof(state_item_t) == 0u)
 	{
 		// copy result to byte result
 		constexpr size_t values_for_output = digest_bytes / sizeof(state_item_t);
@@ -1554,7 +1614,7 @@ template <typename Config> struct internal_hasher {
 	}
 
 	[[gnu::always_inline]] constexpr void write_result_into(digest_span_t out) noexcept
-		requires(digest_bytes % sizeof(state_item_t) != 0u)
+	requires(digest_bytes % sizeof(state_item_t) != 0u)
 	{
 		// this is only used when digest doesn't align with output buffer
 
@@ -2028,7 +2088,8 @@ struct state_1600_ref: std::span<uint64_t, (5u * 5u)> {
 
 	[&]<size_t... Idx>(std::index_sequence<Idx...>) {
 		((state[Idx] ^= tmp[Idx % 5u]), ...);
-	}(std::make_index_sequence<25>());
+	}
+	(std::make_index_sequence<25>());
 }
 
 [[gnu::always_inline, gnu::flatten]] constexpr void rho_pi(state_1600_ref state) noexcept {
@@ -2036,7 +2097,8 @@ struct state_1600_ref: std::span<uint64_t, (5u * 5u)> {
 
 	[&]<size_t... Idx>(std::index_sequence<Idx...>) {
 		((state[pi[Idx]] = std::rotl(std::exchange(tmp, state[pi[Idx]]), rho[Idx])), ...);
-	}(std::make_index_sequence<24>());
+	}
+	(std::make_index_sequence<24>());
 }
 
 [[gnu::always_inline, gnu::flatten]] constexpr void chi(state_1600_ref state) noexcept {
@@ -2071,6 +2133,8 @@ struct state_1600_ref: std::span<uint64_t, (5u * 5u)> {
 } // namespace cthash::keccak
 
 #endif
+
+#include <cstdint>
 
 namespace cthash {
 
@@ -2621,6 +2685,7 @@ namespace literals {
 #include <array>
 #include <span>
 #include <string_view>
+#include <cstdint>
 
 namespace cthash {
 
