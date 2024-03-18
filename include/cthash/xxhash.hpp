@@ -41,7 +41,7 @@ template <> struct xxhash_types<32> {
 
 	static constexpr auto convergence(const acc_array & accs) noexcept -> value_type {
 		return std::rotl(accs[0], 1u) + std::rotl(accs[1], 7u) + std::rotl(accs[2], 12u) + std::rotl(accs[3], 18u);
-	};
+	}
 
 	template <byte_like Byte> static constexpr auto consume_remaining(value_type acc, std::span<const Byte> input) noexcept -> value_type {
 		CTHASH_ASSERT(input.size() < sizeof(acc_array));
@@ -85,7 +85,7 @@ template <> struct xxhash_types<64> {
 		acc = merge(acc, accs[1]);
 		acc = merge(acc, accs[2]);
 		return merge(acc, accs[3]);
-	};
+	}
 
 	template <byte_like Byte> static constexpr auto consume_remaining(value_type acc, std::span<const Byte> input) noexcept -> value_type {
 		CTHASH_ASSERT(input.size() < sizeof(acc_array));

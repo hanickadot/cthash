@@ -2110,8 +2110,7 @@ struct state_1600_ref: std::span<uint64_t, (5u * 5u)> {
 
 	[&]<size_t... Idx>(std::index_sequence<Idx...>) {
 		((state[Idx] ^= tmp[Idx % 5u]), ...);
-	}
-	(std::make_index_sequence<25>());
+	}(std::make_index_sequence<25>());
 }
 
 [[gnu::always_inline, gnu::flatten]] constexpr void rho_pi(state_1600_ref state) noexcept {
@@ -2119,8 +2118,7 @@ struct state_1600_ref: std::span<uint64_t, (5u * 5u)> {
 
 	[&]<size_t... Idx>(std::index_sequence<Idx...>) {
 		((state[pi[Idx]] = std::rotl(std::exchange(tmp, state[pi[Idx]]), rho[Idx])), ...);
-	}
-	(std::make_index_sequence<24>());
+	}(std::make_index_sequence<24>());
 }
 
 [[gnu::always_inline, gnu::flatten]] constexpr void chi(state_1600_ref state) noexcept {
@@ -2149,7 +2147,7 @@ struct state_1600_ref: std::span<uint64_t, (5u * 5u)> {
 		rho_pi(state);
 		chi(state);
 		state[0] ^= rc[static_cast<size_t>(i)];
-	};
+	}
 }
 
 } // namespace cthash::keccak
@@ -2737,7 +2735,7 @@ template <> struct xxhash_types<32> {
 
 	static constexpr auto convergence(const acc_array & accs) noexcept -> value_type {
 		return std::rotl(accs[0], 1u) + std::rotl(accs[1], 7u) + std::rotl(accs[2], 12u) + std::rotl(accs[3], 18u);
-	};
+	}
 
 	template <byte_like Byte> static constexpr auto consume_remaining(value_type acc, std::span<const Byte> input) noexcept -> value_type {
 		CTHASH_ASSERT(input.size() < sizeof(acc_array));
@@ -2781,7 +2779,7 @@ template <> struct xxhash_types<64> {
 		acc = merge(acc, accs[1]);
 		acc = merge(acc, accs[2]);
 		return merge(acc, accs[3]);
-	};
+	}
 
 	template <byte_like Byte> static constexpr auto consume_remaining(value_type acc, std::span<const Byte> input) noexcept -> value_type {
 		CTHASH_ASSERT(input.size() < sizeof(acc_array));

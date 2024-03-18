@@ -46,8 +46,7 @@ struct state_1600_ref: std::span<uint64_t, (5u * 5u)> {
 
 	[&]<size_t... Idx>(std::index_sequence<Idx...>) {
 		((state[Idx] ^= tmp[Idx % 5u]), ...);
-	}
-	(std::make_index_sequence<25>());
+	}(std::make_index_sequence<25>());
 }
 
 [[gnu::always_inline, gnu::flatten]] constexpr void rho_pi(state_1600_ref state) noexcept {
@@ -55,8 +54,7 @@ struct state_1600_ref: std::span<uint64_t, (5u * 5u)> {
 
 	[&]<size_t... Idx>(std::index_sequence<Idx...>) {
 		((state[pi[Idx]] = std::rotl(std::exchange(tmp, state[pi[Idx]]), rho[Idx])), ...);
-	}
-	(std::make_index_sequence<24>());
+	}(std::make_index_sequence<24>());
 }
 
 [[gnu::always_inline, gnu::flatten]] constexpr void chi(state_1600_ref state) noexcept {
@@ -85,7 +83,7 @@ struct state_1600_ref: std::span<uint64_t, (5u * 5u)> {
 		rho_pi(state);
 		chi(state);
 		state[0] ^= rc[static_cast<size_t>(i)];
-	};
+	}
 }
 
 } // namespace cthash::keccak
