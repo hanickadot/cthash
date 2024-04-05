@@ -10,7 +10,7 @@ int main() {
 	constexpr std::chrono::time_point ts = to_timepoint(id);
 
 	std::cout << "id = " << id << "\n";
-	std::cout << "microseconds since epoch: " << std::hex << ts.time_since_epoch().count() << "\n";
+	std::cout << "4 microseconds since epoch: " << std::hex << ts.time_since_epoch().count() << "\n";
 	std::cout << "reserved: " << std::hex << id.reserved() << "\n";
 	std::cout << "family: " << std::hex << unsigned(id.family()) << "\n";
 	std::cout << "node: " << std::dec << id.node() << "\n";
