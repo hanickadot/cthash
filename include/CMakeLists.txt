@@ -12,9 +12,6 @@ target_sources(cthash INTERFACE FILE_SET headers TYPE HEADERS FILES
 	cthash/encoding/encodings.hpp
 	cthash/fixed-string.hpp
 	cthash/hasher.hpp
-	cthash/simple.hpp
-	cthash/value.hpp
-	cthash/xxhash.hpp
 	cthash/internal/algorithm.hpp
 	cthash/internal/assert.hpp
 	cthash/internal/bit.hpp
@@ -26,8 +23,8 @@ target_sources(cthash INTERFACE FILE_SET headers TYPE HEADERS FILES
 	cthash/sha2/sha224.hpp
 	cthash/sha2/sha256.hpp
 	cthash/sha2/sha384.hpp
-	cthash/sha2/sha512/t.hpp
 	cthash/sha2/sha512.hpp
+	cthash/sha2/sha512/t.hpp
 	cthash/sha3/common.hpp
 	cthash/sha3/keccak.hpp
 	cthash/sha3/sha3-224.hpp
@@ -36,6 +33,13 @@ target_sources(cthash INTERFACE FILE_SET headers TYPE HEADERS FILES
 	cthash/sha3/sha3-512.hpp
 	cthash/sha3/shake128.hpp
 	cthash/sha3/shake256.hpp
+	cthash/simple.hpp
+	cthash/uuid.hpp
+	cthash/uuid/clock.hpp
+	cthash/uuid/utility/conversions.hpp
+	cthash/uuid/uuid.hpp
+	cthash/value.hpp
+	cthash/xxhash.hpp
 )
 
 add_custom_target(single-header DEPENDS single-header.hpp)

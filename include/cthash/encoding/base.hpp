@@ -85,6 +85,13 @@ template <typename Encoding, typename CharT, typename R> struct encode_to_view {
 	constexpr size_t size() const noexcept requires(std::ranges::sized_range<R>) {
 		return input.size();
 	}
+
+	template <typename CharT2, typename Traits2> friend auto operator<<(std::basic_ostream<CharT2, Traits2> & os, const encode_to_view & view) -> std::basic_ostream<CharT2, Traits2> & {
+		for (auto c: view) {
+			os << c;
+		}
+		return os;
+	}
 };
 
 template <typename Encoding, typename ValueT, typename R> struct decode_from_view {
@@ -116,16 +123,17 @@ template <typename Encoding, typename CharT = char> struct encode_to_action {
 	template <std::ranges::input_range R> constexpr friend auto operator|(R && input, encode_to_action action) {
 		return action.operator()<R>(std::forward<R>(input));
 	}
-	template <std::ranges::input_range R> constexpr auto operator()(R && input) {
+	template <std::ranges::input_range R> constexpr auto operator()(R && input) const {
 		return encode_to_view<Encoding, CharT, R>(std::forward<R>(input));
 	}
 };
 
+// TODO
 template <typename Encoding, typename ValueT = unsigned char> struct decode_from_action {
 	template <std::ranges::input_range R> constexpr friend auto operator|(R && input, decode_from_action action) {
 		return action.operator()<R>(std::forward<R>(input));
 	}
-	template <std::ranges::input_range R> constexpr auto operator()(R && input) {
+	template <std::ranges::input_range R> constexpr auto operator()(R && input) const {
 		return decode_from_view<Encoding, ValueT, R>(std::forward<R>(input));
 	}
 };
