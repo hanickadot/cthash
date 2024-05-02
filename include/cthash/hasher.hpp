@@ -166,7 +166,7 @@ template <typename Config> struct internal_hasher {
 	}
 
 	[[gnu::always_inline]] constexpr void write_result_into(digest_span_t out) noexcept
-	requires(digest_bytes % sizeof(state_item_t) == 0u)
+		requires(digest_bytes % sizeof(state_item_t) == 0u)
 	{
 		// copy result to byte result
 		constexpr size_t values_for_output = digest_bytes / sizeof(state_item_t);
@@ -178,7 +178,7 @@ template <typename Config> struct internal_hasher {
 	}
 
 	[[gnu::always_inline]] constexpr void write_result_into(digest_span_t out) noexcept
-	requires(digest_bytes % sizeof(state_item_t) != 0u)
+		requires(digest_bytes % sizeof(state_item_t) != 0u)
 	{
 		// this is only used when digest doesn't align with output buffer
 
@@ -229,6 +229,8 @@ template <typename Config> struct hasher: private internal_hasher<Config> {
 		super::update_to_buffer_and_process(std::span(lit, std::size(lit) - 1u));
 		return *this;
 	}
+
+	// TODO: any range with value convertible to byte
 
 	// output (by reference or by value)
 	constexpr void final(digest_span_t digest) noexcept {

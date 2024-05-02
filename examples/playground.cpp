@@ -1,0 +1,18 @@
+#include <cthash/encoding/base.hpp>
+#include <cthash/sha3/sha3-256.hpp>
+#include <iostream>
+
+using namespace cthash::literals;
+
+template <typename> struct identify;
+
+int main() {
+	std::println("{}", "hello there" | cthash::base64_encode);
+
+	constexpr auto a = cthash::sha3_256{}.update("hello there!").final();
+
+	const auto b = a | cthash::base64_encode;
+
+	// std::cout << b << "\n";
+	std::println("{}", b);
+}

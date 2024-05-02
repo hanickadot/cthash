@@ -303,6 +303,8 @@ template <typename Config> struct keccak_hasher: basic_keccak_hasher<Config> {
 		return *this;
 	}
 
+	// TODO: any range with value convertible to byte
+
 	using super::final;
 };
 

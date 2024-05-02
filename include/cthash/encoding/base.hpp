@@ -162,4 +162,36 @@ constexpr auto base64_no_padding_decode = decode_from<encoding::base64_no_paddin
 
 } // namespace cthash
 
+namespace std {
+
+#if __cpp_lib_format >= 201907L
+#define CTHASH_STDFMT_AVAILABLE 1
+#endif
+
+#if _LIBCPP_VERSION >= 170000
+// libc++ will define __cpp_lib_format macro in 19.0
+// https://github.com/llvm/llvm-project/issues/77773
+#define CTHASH_STDFMT_AVAILABLE 1
+#endif
+
+// template <typename Encoding, typename CharT, typename R> struct encode_to_view
+
+#ifdef CTHASH_STDFMT_AVAILABLE
+template <typename Encoding, typename R, typename CharT>
+struct formatter<cthash::encode_to_view<Encoding, CharT, R>, CharT> {
+	using subject_type = cthash::encode_to_view<Encoding, CharT, R>;
+
+	template <typename ParseContext> constexpr auto parse(ParseContext & ctx) {
+		return std::ranges::begin(ctx);
+	}
+
+	template <typename FormatContext> constexpr auto format(const subject_type & value, FormatContext & ctx) const {
+		return std::ranges::copy(value, ctx.out()).out;
+	}
+};
+
+#endif
+
+} // namespace std
+
 #endif

@@ -182,7 +182,7 @@ template <size_t Bits, bool AllowPadding, std::ranges::input_range Input> requir
 
 		storage_type buffer{};
 
-		constexpr iterator(parent & p) noexcept: it{p.begin()}, end{p.end()} {
+		constexpr iterator(parent & p) noexcept: it{std::ranges::begin(p)}, end{std::ranges::end(p)} {
 			// initialize
 			buffer.feed_buffer(it, end);
 		}

@@ -9,3 +9,6 @@ target_link_libraries(shake128 cthash)
 
 add_executable(xxhash xxhash.cpp)
 target_link_libraries(xxhash cthash)
+
+add_executable(playground playground.cpp)
+target_link_libraries(playground cthash)

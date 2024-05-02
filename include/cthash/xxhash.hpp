@@ -197,6 +197,8 @@ template <size_t Bits> struct xxhash {
 		return update(std::span(std::data(input), std::size(input) - 1u));
 	}
 
+	// TODO: any range with value convertible to byte
+
 	template <byte_like Byte> [[gnu::flatten]] constexpr auto update_and_final(std::span<const Byte> input) noexcept {
 		length = static_cast<value_type>(input.size());
 		process_blocks(input);
