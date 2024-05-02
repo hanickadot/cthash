@@ -12,3 +12,6 @@ target_link_libraries(xxhash cthash)
 
 add_executable(uuid uuid.cpp)
 target_link_libraries(uuid cthash)
+
+add_executable(playground playground.cpp)
+target_link_libraries(playground cthash)
