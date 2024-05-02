@@ -85,6 +85,19 @@ template <typename Encoding, typename CharT, typename R> struct encode_to_view {
 	constexpr size_t size() const noexcept requires(std::ranges::sized_range<R>) {
 		return input.size();
 	}
+
+	constexpr auto to_string() const requires(std::ranges::sized_range<R>) {
+#if __cpp_lib_ranges_to_container >= 202202L
+		return std::ranges::to<std::basic_string<CharT>>(*this);
+#else
+		auto result = std::basic_string<CharT>{};
+		result.resize(size());
+		auto [i, o] = std::ranges::copy(begin(), end(), result.begin());
+		assert(i == encoded.end());
+		assert(o == result.end());
+		return result;
+#endif
+	}
 };
 
 template <typename Encoding, typename ValueT, typename R> struct decode_from_view {

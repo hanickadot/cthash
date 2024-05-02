@@ -6,5 +6,5 @@ using namespace cthash::literals;
 int main() {
 	constexpr auto a = cthash::sha3_256{}.update("hello there!").final();
 
-	std::print("{:base32}", a);
+	std::print("{:HEXDEC}", a);
 }
