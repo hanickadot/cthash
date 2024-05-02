@@ -129,7 +129,7 @@ template <typename Encoding, typename CharT = char> struct encode_to_action {
 	template <std::ranges::input_range R> constexpr friend auto operator|(R && input, encode_to_action action) {
 		return action.operator()<R>(std::forward<R>(input));
 	}
-	template <std::ranges::input_range R> constexpr auto operator()(R && input) {
+	template <std::ranges::input_range R> constexpr auto operator()(R && input) const {
 		return encode_to_view<Encoding, CharT, R>(std::forward<R>(input));
 	}
 };
@@ -138,7 +138,7 @@ template <typename Encoding, typename ValueT = unsigned char> struct decode_from
 	template <std::ranges::input_range R> constexpr friend auto operator|(R && input, decode_from_action action) {
 		return action.operator()<R>(std::forward<R>(input));
 	}
-	template <std::ranges::input_range R> constexpr auto operator()(R && input) {
+	template <std::ranges::input_range R> constexpr auto operator()(R && input) const {
 		return decode_from_view<Encoding, ValueT, R>(std::forward<R>(input));
 	}
 };
