@@ -3,6 +3,7 @@
 
 #include <ranges>
 #include <concepts>
+#include <cstdint>
 
 namespace cthash {
 
