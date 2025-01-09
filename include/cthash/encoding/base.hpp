@@ -98,6 +98,11 @@ template <typename Encoding, typename CharT, typename R> struct encode_to_view {
 		return result;
 #endif
 	}
+
+	constexpr friend std::basic_ostream<CharT> & operator<<(std::basic_ostream<CharT> & out, encode_to_view in) {
+		std::ranges::copy(in.begin(), in.end(), std::ostream_iterator<CharT, CharT>(out));
+		return out;
+	}
 };
 
 template <typename Encoding, typename ValueT, typename R> struct decode_from_view {
