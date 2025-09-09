@@ -5,6 +5,7 @@
 #include <ostream>
 #include <span>
 #include <type_traits>
+#include <cstdint>
 
 namespace cthash::internal {
 
@@ -45,8 +46,7 @@ struct byte_hexdec_value {
 template <size_t N, typename CharT> constexpr auto hexdec_to_binary(std::span<const CharT, N * 2> in) -> std::array<std::byte, N> {
 	return [in]<size_t... Idx>(std::index_sequence<Idx...>) {
 		return std::array<std::byte, N>{static_cast<std::byte>(hexdec_to_value_alphabet[static_cast<size_t>(in[Idx * 2]) & 0b0111'1111u] << 4u | hexdec_to_value_alphabet[static_cast<size_t>(in[Idx * 2u + 1u]) & 0b0111'1111u])...};
-	}
-	(std::make_index_sequence<N>());
+	}(std::make_index_sequence<N>());
 }
 
 template <typename CharT, size_t N>
