@@ -20,6 +20,10 @@ The library also implements hash_value literals in namespace `cthash::literals` 
 * SHAKE-128 (`_shake128`)
 * SHAKE-256 (`_shake256`)
 
+* pre-NISE Keccak-256 (`_keccak_256`)
+* pre-NISE Keccak-384 (`_keccak_384`)
+* pre-NISE Keccak-512 (`_keccak_512`)
+
 * XXHASH-32 (`_xxh32`)
 * XXHASH-64 (`_xxh64`)
 
