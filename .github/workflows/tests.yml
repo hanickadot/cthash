@@ -14,7 +14,7 @@ jobs:
           submodules: "true"
       - run: c++ -v
       - name: "Configure"
-        run: cmake . -G Ninja -B build -DCTHASH_TESTS=ON
+        run: cmake . -G Ninja -B build -DCTHASH_TESTS=ON -DCTHASH_COVERAGE=OFF
       - name: "Build"
         run: cmake --build build --target test --verbose
   gcc:
@@ -34,7 +34,7 @@ jobs:
           submodules: "true"
       - run: c++ -v
       - name: "Configure"
-        run: cmake . -G Ninja -B build -DCTHASH_TESTS=ON -DCMAKE_CXX_COMPILER=`which g++-${{ matrix.gcc }}`
+        run: cmake . -G Ninja -B build -DCTHASH_TESTS=ON -DCTHASH_COVERAGE=OFF -DCMAKE_CXX_COMPILER=`which g++-${{ matrix.gcc }}`
       - name: "Build"
         run: cmake --build build --target test --verbose
   clang:
@@ -58,7 +58,7 @@ jobs:
           submodules: "true"
       - run: c++ -v
       - name: "Configure"
-        run: cmake . -G Ninja -B build -DCTHASH_TESTS=ON -DCMAKE_CXX_COMPILER=`which clang++`
+        run: cmake . -G Ninja -B build -DCTHASH_TESTS=ON -DCTHASH_COVERAGE=OFF -DCMAKE_CXX_COMPILER=`which clang++`
       - name: "Build"
         run: cmake --build build --target test --verbose
   msvc:
@@ -79,6 +79,6 @@ jobs:
         with: 
           submodules: "true"
       - name: "Configure"
-        run: cmake . -G Ninja -B build -DCTHASH_TESTS=ON
+        run: cmake . -G Ninja -B build -DCTHASH_TESTS=ON -DCTHASH_COVERAGE=OFF
       - name: "Build"
         run: cmake --build build --target test --verbose
