@@ -308,6 +308,15 @@ template <typename Config> struct keccak_hasher: basic_keccak_hasher<Config> {
 	using super::final;
 };
 
+template <size_t DigestBits>
+struct sha_config {
+	static constexpr size_t digest_length_bit = DigestBits;
+	static constexpr size_t capacity_bit = DigestBits * 2u;
+	static constexpr size_t rate_bit = 1600u - capacity_bit;
+
+	static constexpr auto suffix = keccak_suffix(2, 0b0000'0010u); // in reverse
+};
+
 } // namespace cthash
 
 #endif
