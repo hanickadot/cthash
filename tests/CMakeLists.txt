@@ -13,6 +13,9 @@ add_executable(test-runner
 	sha3/sha3-384.cpp
 	sha3/sha3-224.cpp
 	sha3/sha3-256.cpp
+	sha3/keccak-256.cpp
+	sha3/keccak-384.cpp
+	sha3/keccak-512.cpp
 	sha3/shake256.cpp
 	sha3/shake128.cpp
 	sha3/sha3-512.cpp

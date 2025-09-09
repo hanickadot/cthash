@@ -1,7 +1,7 @@
-#include "internal/support.hpp"
-#include <cthash/sha3/keccak.hpp>
 #include <catch2/benchmark/catch_benchmark.hpp>
 #include <catch2/catch_test_macros.hpp>
+#include "internal/support.hpp"
+#include <cthash/sha3/keccak-base.hpp>
 
 TEST_CASE("keccakF") {
 	auto s = cthash::keccak::state_1600{};
