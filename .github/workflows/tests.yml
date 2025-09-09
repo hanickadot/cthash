@@ -75,7 +75,9 @@ jobs:
           toolset: ${{ matrix.version }}
       - name: "Install Ninja & CMake"
         run: choco install ninja cmake
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v5
+        with: 
+          submodules: "true"
       - name: "Configure"
         run: cmake . -G Ninja -B build -DCTHASH_TESTS=ON
       - name: "Build"
