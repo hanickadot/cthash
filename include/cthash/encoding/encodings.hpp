@@ -2,6 +2,7 @@
 #define CTHASH_ENCODING_ENCODINGS_HPP
 
 #include "concepts.hpp"
+#include <optional>
 #include <variant>
 
 namespace cthash {
