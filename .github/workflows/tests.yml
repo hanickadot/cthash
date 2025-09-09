@@ -64,15 +64,17 @@ jobs:
   msvc:
     strategy:
       matrix:
-        version: [14.29, ""]
+        version: [""]
+        platform: ["amd64_x86", "amd64", "arm64"]
       fail-fast: false
-    name: "MSVC ${{ matrix.version }}"
+    name: "MSVC ${{ matrix.version }} ${{ matrix.version }}"
     runs-on: windows-2022
     steps:
       - name: Add MSVC ${{ matrix.version }} to PATH
         uses: ilammy/msvc-dev-cmd@v1
         with:
           toolset: ${{ matrix.version }}
+          platform: ${{ matrix.platform }}
       - name: "Install Ninja & CMake"
         run: choco install ninja cmake
       - uses: actions/checkout@v5
