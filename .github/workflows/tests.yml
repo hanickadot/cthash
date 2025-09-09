@@ -6,7 +6,7 @@ jobs:
       matrix:
         macos: [15]
       fail-fast: false
-    name: "AppleClang (MacOS ${{ matrix.macos }}"
+    name: "AppleClang (MacOS ${{ matrix.macos }})"
     runs-on: macos-${{ matrix.macos }}
     steps:
       - uses: actions/checkout@v5
