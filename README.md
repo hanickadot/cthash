@@ -74,5 +74,7 @@ There is no allocation at all, everything is done as a value type from user's pe
 
 You need a C++20 compiler.
 
-* Clang 15.0.7+
-* GCC 12.2+ 
+* Clang 19+
+* GCC 13+ 
+* MSVC 14.44+
+

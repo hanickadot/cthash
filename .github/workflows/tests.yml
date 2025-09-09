@@ -64,7 +64,7 @@ jobs:
   msvc:
     strategy:
       matrix:
-        version: ["", "14.44"]
+        version: ["14.44"]
         platform: ["amd64_x86", "amd64", "arm64"]
       fail-fast: false
     name: "MSVC ${{ matrix.platform }} ${{ matrix.version }}"
