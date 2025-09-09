@@ -58,7 +58,7 @@ jobs:
           submodules: "true"
       - run: c++ -v
       - name: "Configure"
-        run: cmake . -G Ninja -B build -DCTHASH_TESTS=ON -DCTHASH_COVERAGE=OFF -DCMAKE_CXX_COMPILER=`which clang++`
+        run: cmake . -G Ninja -B build -DCTHASH_TESTS=ON -DCTHASH_COVERAGE=OFF -DCMAKE_CXX_COMPILER=`which clang++` -DCMAKE_CXX_FLAGS=-stdlib=${{ matrix.stdlib }}
       - name: "Build"
         run: cmake --build build --target test --verbose
   msvc:
@@ -66,7 +66,7 @@ jobs:
       matrix:
         version: [14.29, ""]
       fail-fast: false
-    name: "MSVC ${{ matrix.version }} (C++20)"
+    name: "MSVC ${{ matrix.version }}"
     runs-on: windows-2022
     steps:
       - name: Add MSVC ${{ matrix.version }} to PATH
