@@ -93,7 +93,7 @@ template <typename Encoding, typename CharT, typename R> struct encode_to_view {
 		auto result = std::basic_string<CharT>{};
 		result.resize(size());
 		auto [i, o] = std::ranges::copy(begin(), end(), result.begin());
-		assert(i == encoded.end());
+		assert(i == result.end());
 		assert(o == result.end());
 		return result;
 #endif
