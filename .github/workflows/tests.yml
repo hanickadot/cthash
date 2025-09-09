@@ -9,7 +9,9 @@ jobs:
     name: "AppleClang (MacOS ${{ matrix.macos }}"
     runs-on: macos-${{ matrix.macos }}
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v5
+        with: 
+          submodules: "true"
       - run: c++ -v
       - name: "Configure"
         run: cmake . -G Ninja -B build -DCTHASH_TESTS=ON
@@ -27,7 +29,9 @@ jobs:
         uses: egor-tensin/setup-gcc@v1
         with:
           version: ${{ matrix.gcc }}
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v5
+        with: 
+          submodules: "true"
       - run: c++ -v
       - name: "Configure"
         run: cmake . -G Ninja -B build -DCTHASH_TESTS=ON
@@ -49,7 +53,9 @@ jobs:
       - name: "Install libc++"
         if: ${{ matrix.stdlib == 'libc++' }}
         run: sudo apt-get install cmake libc++abi-${{ matrix.clang }}-dev libc++1-${{ matrix.clang }} libc++-${{ matrix.clang }}-dev
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v5
+        with: 
+          submodules: "true"
       - run: c++ -v
       - name: "Configure"
         run: cmake . -G Ninja -B build -DCTHASH_TESTS=ON
