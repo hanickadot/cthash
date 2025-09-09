@@ -1,5 +1,5 @@
-#ifndef CTHASH_SHA3_KECCAK_HPP
-#define CTHASH_SHA3_KECCAK_HPP
+#ifndef CTHASH_SHA3_KECCAK_BASE_HPP
+#define CTHASH_SHA3_KECCAK_BASE_HPP
 
 #include <array>
 #include <bit>

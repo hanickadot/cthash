@@ -1,5 +1,5 @@
-#ifndef CTHASH_SHA3_KECCAK_256_HPP
-#define CTHASH_SHA3_KECCAK_256_HPP
+#ifndef CTHASH_SHA3_KECCAK_HPP
+#define CTHASH_SHA3_KECCAK_HPP
 
 #include "common.hpp"
 

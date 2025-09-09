@@ -1,6 +1,6 @@
 #include <catch2/catch_test_macros.hpp>
 #include "../internal/support.hpp"
-#include <cthash/sha3/keccak-n.hpp>
+#include <cthash/sha3/keccak.hpp>
 #include <iostream>
 
 using namespace cthash::literals;
