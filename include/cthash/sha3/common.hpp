@@ -1,7 +1,7 @@
 #ifndef CTHASH_SHA3_COMMON_HPP
 #define CTHASH_SHA3_COMMON_HPP
 
-#include "keccak.hpp"
+#include "keccak-base.hpp"
 #include "../hasher.hpp"
 #include "../internal/bit.hpp"
 #include "../internal/convert.hpp"
