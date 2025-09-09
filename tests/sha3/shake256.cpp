@@ -1,7 +1,8 @@
+#include <catch2/catch_test_macros.hpp>
 #include "../internal/support.hpp"
 #include <cthash/sha3/shake256.hpp>
-#include <catch2/catch_test_macros.hpp>
 #include <iostream>
+#include <compare>
 
 using namespace cthash::literals;
 
@@ -18,8 +19,8 @@ TEST_CASE("shake256 literal basics") {
 	REQUIRE(a == b);
 	REQUIRE(a == c);
 
-	REQUIRE((a <=> b) == 0);
-	REQUIRE((a <=> c) == 0);
+	REQUIRE(std::is_eq((a <=> b)));
+	REQUIRE(std::is_eq((a <=> c)));
 }
 
 TEST_CASE("shake256 calculation") {

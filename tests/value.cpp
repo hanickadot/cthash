@@ -1,6 +1,6 @@
+#include <catch2/catch_test_macros.hpp>
 #include <cthash/value.hpp>
 #include <sstream>
-#include <catch2/catch_test_macros.hpp>
 
 using namespace cthash::literals;
 
@@ -8,7 +8,7 @@ TEST_CASE("hash_value (constexpr basics)") {
 	constexpr auto v1 = cthash::hash_value{"0011223300112233"};
 	constexpr auto v2 = cthash::hash_value{"00112233aabbccdd"};
 
-	STATIC_REQUIRE((v1 <=> v1) == 0); // appleclang doesn't have std::is_eq
+	STATIC_REQUIRE(std::is_eq(v1 <=> v1));
 	STATIC_REQUIRE(v1 == v1);
 	STATIC_REQUIRE(v1 < v2);
 	STATIC_REQUIRE(v2 > v1);
@@ -31,7 +31,7 @@ TEST_CASE("hash_value (runtime basics)") {
 	auto v1 = cthash::hash_value{"0011223300112233"};
 	auto v2 = cthash::hash_value{"00112233aabbccdd"};
 
-	REQUIRE((v1 <=> v1) == 0); // appleclang doesn't have std::is_eq
+	REQUIRE(std::is_eq(v1 <=> v1)); // appleclang doesn't have std::is_eq
 	REQUIRE(v1 == v1);
 	REQUIRE(v1 < v2);
 	REQUIRE(v2 > v1);

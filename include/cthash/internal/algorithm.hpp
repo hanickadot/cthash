@@ -10,7 +10,7 @@ namespace cthash::internal {
 
 template <typename It1, typename It2> constexpr auto threeway_compare_of_same_size(It1 lhs, It2 rhs, size_t length) -> std::strong_ordering {
 	for (size_t i = 0; i != length; ++i) {
-		if (const auto r = (*lhs++ <=> *rhs++); r != 0) {
+		if (const auto r = (*lhs++ <=> *rhs++); std::is_neq(r)) {
 			return r;
 		}
 	}

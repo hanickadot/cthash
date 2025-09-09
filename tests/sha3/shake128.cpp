@@ -2,6 +2,7 @@
 #include "../internal/support.hpp"
 #include <cthash/sha3/shake128.hpp>
 #include <iostream>
+#include <compare>
 
 using namespace cthash::literals;
 
@@ -26,8 +27,8 @@ TEST_CASE("shake128 literal basics") {
 
 	REQUIRE(c != d);
 
-	REQUIRE((a <=> b) == 0);
-	REQUIRE((a <=> c) == 0);
+	REQUIRE(std::is_eq(a <=> b));
+	REQUIRE(std::is_eq(a <=> c));
 }
 
 TEST_CASE("shake128 calculation") {
