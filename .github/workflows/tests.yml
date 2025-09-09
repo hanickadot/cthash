@@ -67,7 +67,7 @@ jobs:
         version: [""]
         platform: ["amd64_x86", "amd64", "arm64"]
       fail-fast: false
-    name: "MSVC ${{ matrix.version }} ${{ matrix.version }}"
+    name: "MSVC ${{ matrix.platform }} ${{ matrix.version }}"
     runs-on: windows-2022
     steps:
       - name: Add MSVC ${{ matrix.version }} to PATH
