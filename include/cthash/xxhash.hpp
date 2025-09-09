@@ -3,7 +3,6 @@
 
 #include "simple.hpp"
 #include "value.hpp"
-#include "internal/assert.hpp"
 #include "internal/bit.hpp"
 #include "internal/concepts.hpp"
 #include "internal/convert.hpp"
@@ -18,7 +17,7 @@ namespace cthash {
 template <size_t Bits> struct xxhash_types;
 
 template <std::unsigned_integral T, byte_like Byte> constexpr auto read_le_number_from(std::span<const Byte> & input) noexcept {
-	CTHASH_ASSERT(input.size() >= sizeof(T));
+	assert(input.size() >= sizeof(T));
 
 	const auto r = cast_from_le_bytes<T>(input.template first<sizeof(T)>());
 	input = input.subspan(sizeof(T));
@@ -44,7 +43,7 @@ template <> struct xxhash_types<32> {
 	}
 
 	template <byte_like Byte> static constexpr auto consume_remaining(value_type acc, std::span<const Byte> input) noexcept -> value_type {
-		CTHASH_ASSERT(input.size() < sizeof(acc_array));
+		assert(input.size() < sizeof(acc_array));
 
 		while (input.size() >= sizeof(uint32_t)) {
 			const auto lane = read_le_number_from<uint32_t>(input);
@@ -88,7 +87,7 @@ template <> struct xxhash_types<64> {
 	}
 
 	template <byte_like Byte> static constexpr auto consume_remaining(value_type acc, std::span<const Byte> input) noexcept -> value_type {
-		CTHASH_ASSERT(input.size() < sizeof(acc_array));
+		assert(input.size() < sizeof(acc_array));
 
 		while (input.size() >= sizeof(uint64_t)) {
 			const auto lane = read_le_number_from<uint64_t>(input);
@@ -172,7 +171,7 @@ template <size_t Bits> struct xxhash {
 
 			// if we didn't fill current block, we will do it later
 			if (buffer_remaining.size() != to_copy.size()) {
-				CTHASH_ASSERT(input.size() == 0u);
+				assert(input.size() == 0u);
 				return *this;
 			}
 
@@ -226,7 +225,7 @@ template <size_t Bits> struct xxhash {
 	}
 
 	template <byte_like Byte> constexpr void final_from(std::span<const Byte> source, digest_span_t out) const noexcept {
-		CTHASH_ASSERT(source.size() < buffer.size());
+		assert(source.size() < buffer.size());
 
 		value_type acc = converge_conditionaly();
 
