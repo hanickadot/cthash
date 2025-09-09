@@ -24,8 +24,8 @@ consteval auto get_hexdec_table() noexcept {
 		}
 	};
 
-	for (int i = 0; i != static_cast<int>(result.size()); ++i) {
-		result[static_cast<size_t>(i)] = char_to_hexdec(static_cast<char>(i));
+	for (size_t i = 0; i != result.size(); ++i) {
+		result[i] = char_to_hexdec(static_cast<char>(i));
 	}
 
 	return result;
