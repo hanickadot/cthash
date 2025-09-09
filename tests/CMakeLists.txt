@@ -1,5 +1,6 @@
+if (NOT TARGET Catch2)
 find_package(Catch2 3 REQUIRED)
-
+endif()
 
 add_executable(test-runner
 	benchmark/sha3-256.cpp
