@@ -40,7 +40,7 @@ jobs:
   clang:
     strategy:
       matrix:
-        clang: [17]
+        clang: [20]
         stdlib: ["libc++", "libstdc++"]
       fail-fast: false
     name: "Clang ${{ matrix.clang }} (${{ matrix.stdlib }})"

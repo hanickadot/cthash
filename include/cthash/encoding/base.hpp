@@ -186,12 +186,6 @@ namespace std {
 #define CTHASH_STDFMT_AVAILABLE 1
 #endif
 
-#if _LIBCPP_VERSION >= 170000
-// libc++ will define __cpp_lib_format macro in 19.0
-// https://github.com/llvm/llvm-project/issues/77773
-#define CTHASH_STDFMT_AVAILABLE 1
-#endif
-
 // template <typename Encoding, typename CharT, typename R> struct encode_to_view
 
 #ifdef CTHASH_STDFMT_AVAILABLE
