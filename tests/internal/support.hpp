@@ -3,6 +3,7 @@
 
 #include <array>
 #include <span>
+#include <string>
 #include <string_view>
 #include <cstddef>
 
