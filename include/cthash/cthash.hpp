@@ -9,10 +9,8 @@
 #include "sha2/sha512/t.hpp"
 
 // SHA-3 (keccak) family
-#include "sha3/sha3-224.hpp"
-#include "sha3/sha3-256.hpp"
-#include "sha3/sha3-384.hpp"
-#include "sha3/sha3-512.hpp"
+#include "sha3/keccak.hpp"
+#include "sha3/sha3.hpp"
 #include "sha3/shake128.hpp"
 #include "sha3/shake256.hpp"
 
