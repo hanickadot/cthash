@@ -75,6 +75,8 @@ jobs:
         with:
           toolset: ${{ matrix.version }}
           platform: ${{ matrix.platform }}
+      - name: "Print cl.exe version"
+        run: cl.exe
       - name: "Install Ninja & CMake"
         run: choco install ninja cmake
       - uses: actions/checkout@v5
