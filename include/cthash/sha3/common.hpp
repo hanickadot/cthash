@@ -25,9 +25,9 @@ template <castable_to<std::byte>... Ts> keccak_suffix(unsigned, Ts...) -> keccak
 template <typename T> struct identify;
 
 template <typename T, byte_like Byte> constexpr auto convert_prefix_into_aligned(std::span<const Byte> input, unsigned pos) noexcept -> std::array<std::byte, sizeof(T)> {
-	CTHASH_ASSERT(input.size() <= sizeof(T));
-	CTHASH_ASSERT(pos <= sizeof(T));
-	CTHASH_ASSERT((input.size() + pos) <= sizeof(T));
+	assert(input.size() <= sizeof(T));
+	assert(pos <= sizeof(T));
+	assert((input.size() + pos) <= sizeof(T));
 
 	std::array<std::byte, sizeof(T)> buffer{};
 
@@ -67,7 +67,7 @@ template <typename Config> struct basic_keccak_hasher {
 		using value_t = keccak::state_1600::value_type;
 
 		if ((std::is_constant_evaluated() | (std::endian::native != std::endian::little))) {
-			CTHASH_ASSERT((size_t(position) + input.size()) <= rate);
+			assert((size_t(position) + input.size()) <= rate);
 
 			// unaligned prefix (by copying from left to right it should be little endian)
 			if (position % sizeof(value_t) != 0u) {
@@ -107,13 +107,13 @@ template <typename Config> struct basic_keccak_hasher {
 	}
 
 	template <byte_like T> constexpr auto update(std::span<const T> input) noexcept {
-		CTHASH_ASSERT(position < rate);
+		assert(position < rate);
 		const size_t remaining_in_buffer = rate - position;
 
 		if (remaining_in_buffer > input.size()) {
 			// xor overwrite as much as we can, and that's all
 			xor_overwrite_block(input);
-			CTHASH_ASSERT(position < rate);
+			assert(position < rate);
 			return;
 		}
 
@@ -121,7 +121,7 @@ template <typename Config> struct basic_keccak_hasher {
 		const auto first_part = input.first(remaining_in_buffer);
 		input = input.subspan(remaining_in_buffer);
 		xor_overwrite_block(first_part);
-		CTHASH_ASSERT(position == rate);
+		assert(position == rate);
 		keccak_f(internal_state);
 		position = 0u;
 
@@ -129,7 +129,7 @@ template <typename Config> struct basic_keccak_hasher {
 		while (input.size() >= rate) {
 			const auto block = input.template first<rate>();
 			input = input.subspan(rate);
-			CTHASH_ASSERT(position == 0u);
+			assert(position == 0u);
 			xor_overwrite_block<T>(block);
 			keccak_f(internal_state);
 			position = 0u;
@@ -137,15 +137,15 @@ template <typename Config> struct basic_keccak_hasher {
 
 		// xor overwrite internal state with current remainder, and set position to end of it
 		if (not input.empty()) {
-			CTHASH_ASSERT(position == 0u);
+			assert(position == 0u);
 			xor_overwrite_block(input);
-			CTHASH_ASSERT(position < rate);
+			assert(position < rate);
 		}
 	}
 
 	// pad the message
 	constexpr void xor_padding_block() noexcept {
-		CTHASH_ASSERT(position < rate);
+		assert(position < rate);
 
 		constexpr const auto & suffix = Config::suffix;
 		constexpr std::byte suffix_and_start_of_padding = (suffix.values[0] | (std::byte{0b0000'0001u} << suffix.bits));
@@ -199,7 +199,7 @@ template <typename Config> struct basic_keccak_hasher {
 			// convert
 			std::array<std::byte, sizeof(value_t)> tmp;
 			unwrap_littleendian_number<value_t>{tmp} = current;
-			CTHASH_ASSERT(tmp.size() > output.size());
+			assert(tmp.size() > output.size());
 			std::copy_n(tmp.data(), output.size(), output.data());
 		}
 	}
@@ -217,7 +217,7 @@ template <typename Config> struct basic_keccak_hasher {
 
 		// aligned results will be processed here...
 		while ((output.size() >= sizeof(value_t))) {
-			CTHASH_ASSERT(!r.empty());
+			assert(!r.empty());
 			// look at current to process
 			const value_t current = r.front();
 			const auto part = output.template first<sizeof(value_t)>();
@@ -232,15 +232,15 @@ template <typename Config> struct basic_keccak_hasher {
 
 		if constexpr ((output_fixed.size() % sizeof(value_t)) != 0u) {
 			// unaligned result is here
-			CTHASH_ASSERT(!output.empty());
-			CTHASH_ASSERT(!r.empty());
+			assert(!output.empty());
+			assert(!r.empty());
 
 			const value_t current = r.front();
 
 			// convert
 			std::array<std::byte, sizeof(value_t)> tmp;
 			unwrap_littleendian_number<value_t>{tmp} = current;
-			CTHASH_ASSERT(tmp.size() > output.size());
+			assert(tmp.size() > output.size());
 			std::copy_n(tmp.data(), output.size(), output.data());
 		}
 	}

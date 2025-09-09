@@ -1,8 +1,10 @@
 SET(test_source "int main() { }")
 
-try_compile(COVERAGE_WORKS SOURCE_FROM_VAR test.cpp test_source LINK_OPTIONS -fprofile-instr-generate -fcoverage-mapping)
+try_compile(COVERAGE_WORKS SOURCE_FROM_VAR test.cpp test_source LINK_OPTIONS -fprofile-instr-generate -fcoverage-mapping OUTPUT_VARIABLE COVERAGE_WORKS_OUTPUT)
 
 if (NOT COVERAGE_WORKS)
+	#message(STATUS "test coverage is not compatible with current compiler")
+	#message(STATUS "${COVERAGE_WORKS_OUTPUT}")
 	function(enable_coverage)
 	endfunction()
 	
@@ -16,8 +18,13 @@ endif()
 
 cmake_path(GET CMAKE_CXX_COMPILER PARENT_PATH COMPILER_HINT_PATH)
 
-find_program(LLVM_PROFDATA llvm-profdata HINTS ${COMPILER_HINT_PATH})
-find_program(LLVM_COV llvm-cov HINTS ${COMPILER_HINT_PATH})
+if (NOT LLVM_PROFDATA)
+	find_program(LLVM_PROFDATA llvm-profdata HINTS ${COMPILER_HINT_PATH})
+endif()
+
+if (NOT LLVM_COV)
+	find_program(LLVM_COV llvm-cov HINTS ${COMPILER_HINT_PATH})
+endif()
 
 if (LLVM_PROFDATA AND LLVM_COV)
 	set(LLVM_PROFDATA "${LLVM_PROFDATA}" CACHE INTERNAL "path to llvm-profdata")
@@ -60,7 +67,7 @@ function(coverage_report_after EVENT TARGET)
 	SET(coverage_data_name "default.profraw")
 	add_custom_command(TARGET ${EVENT} POST_BUILD 
 		COMMAND ${LLVM_PROFDATA} merge -sparse ${coverage_data_name} -o coverage.profdata 
-		COMMAND ${LLVM_COV} show $<TARGET_FILE:${TARGET}> -format html -instr-profile=coverage.profdata "-ignore-filename-regex=\"(external/.*|tests/.*|cthash/internal/assert[.]hpp)\""  -output-dir ${CMAKE_BINARY_DIR}/report -show-instantiations=true -show-expansions=false -show-line-counts --show-line-counts-or-regions -Xdemangler c++filt -Xdemangler -n -show-branches=percent -tab-size=4 -path-equivalence=/,${CMAKE_SOURCE_DIR} 
+		COMMAND ${LLVM_COV} show $<TARGET_FILE:${TARGET}> -format html -instr-profile=coverage.profdata "-ignore-filename-regex=\"(external/.*|tests/.*|cthash/internal/assert[.]hpp)\""  -output-dir ${CMAKE_BINARY_DIR}/report -show-instantiations=false -show-directory-coverage -show-expansions=false -show-line-counts --show-line-counts-or-regions -Xdemangler c++filt -Xdemangler -n -show-branches=percent -tab-size=4 -path-equivalence=/,${CMAKE_SOURCE_DIR} 
 		COMMAND cd ${CMAKE_BINARY_DIR} && zip -q -r -9 report.zip report BYPRODUCTS  ${CMAKE_BINARY_DIR}/report.zip COMMENT "Generating Code-Coverage report"
 	)
 	

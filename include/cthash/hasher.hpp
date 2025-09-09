@@ -3,7 +3,6 @@
 
 #include "simple.hpp"
 #include "value.hpp"
-#include "internal/assert.hpp"
 #include "internal/bit.hpp"
 #include "internal/concepts.hpp"
 #include "internal/convert.hpp"
@@ -90,7 +89,7 @@ template <typename Config> struct internal_hasher {
 
 			// we didn't fill the block
 			if (it != remaining_free_space.end()) {
-				CTHASH_ASSERT(to_copy.size() == in.size());
+				assert(to_copy.size() == in.size());
 				block_used += static_cast<unsigned>(to_copy.size());
 				return;
 			} else {
@@ -121,8 +120,8 @@ template <typename Config> struct internal_hasher {
 
 		// remainder is put onto temporary block
 		if (not in.empty()) {
-			CTHASH_ASSERT(block_used == 0u);
-			CTHASH_ASSERT(in.size() < block_size_bytes);
+			assert(block_used == 0u);
+			assert(in.size() < block_size_bytes);
 
 			// copy it to block and let it stay there
 			byte_copy(in.begin(), in.end(), block.begin());
@@ -132,7 +131,7 @@ template <typename Config> struct internal_hasher {
 	}
 
 	[[gnu::always_inline]] static constexpr bool finalize_buffer(block_value_t & block, size_t block_used) noexcept {
-		CTHASH_ASSERT(block_used < block.size());
+		assert(block_used < block.size());
 		const auto free_space = std::span(block).subspan(block_used);
 
 		auto it = free_space.data();

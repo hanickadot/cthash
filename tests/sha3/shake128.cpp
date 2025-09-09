@@ -1,6 +1,6 @@
+#include <catch2/catch_test_macros.hpp>
 #include "../internal/support.hpp"
 #include <cthash/sha3/shake128.hpp>
-#include <catch2/catch_test_macros.hpp>
 #include <iostream>
 
 using namespace cthash::literals;
@@ -75,7 +75,7 @@ TEST_CASE("shake128 calculation (b)") {
 
 	SECTION("16 bits") {
 		auto r0 = cthash::shake128().update("The quick brown fox jumps over the lazy dof").final<16>();
-
+		REQUIRE(sizeof(r0) == 2);
 		REQUIRE(r0 == expected);
 	}
 

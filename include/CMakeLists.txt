@@ -16,7 +16,6 @@ target_sources(cthash INTERFACE FILE_SET headers TYPE HEADERS FILES
 	cthash/value.hpp
 	cthash/xxhash.hpp
 	cthash/internal/algorithm.hpp
-	cthash/internal/assert.hpp
 	cthash/internal/bit.hpp
 	cthash/internal/concepts.hpp
 	cthash/internal/convert.hpp
