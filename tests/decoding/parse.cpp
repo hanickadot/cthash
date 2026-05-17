@@ -8,8 +8,49 @@ using namespace cthash::literals;
 
 template <typename> struct identify;
 
-TEST_CASE("parse base64 sha256") {
-	std::optional<cthash::sha256_value> hash = cthash::sha256::parse<cthash::base64>("AgapeEOxuk+7FH1HJVDsO17oqsrfNwdSIVckCUDRvr0="sv);
-	REQUIRE(hash.has_value());
-	REQUIRE(*hash == "0206a97843b1ba4fbb147d472550ec3b5ee8aacadf3707522157240940d1bebd"_sha256);
+constexpr std::string stringify(auto && range) {
+	return std::ranges::to<std::string>(range);
+}
+
+TEST_CASE("in and out sha256") {
+	// read from somewhere already calculated
+	auto hash = cthash::sha256_value{cthash::base64, "AgapeEOxuk+7FH1HJVDsO17oqsrfNwdSIVckCUDRvr0="sv};
+
+	// calculating from
+	auto chash = cthash::sha256("aloha").final();
+	REQUIRE(hash == chash);
+
+	// literal
+	auto phash = "0206a97843b1ba4fbb147d472550ec3b5ee8aacadf3707522157240940d1bebd"_sha256;
+	REQUIRE(phash == chash);
+	REQUIRE(phash == hash);
+
+	// and encode into base32 (lazily, hence the helper)
+	auto ohash = stringify(hash | cthash::encode(cthash::z_base32));
+	REQUIRE(ohash == "yedk16ndsg7r9qawxid1kw8c8pxqtksk5h5oqwtbkh1y1ogtz46o");
+}
+
+template <typename Lhs, typename Rhs> concept comparable = requires(const Lhs & l, const Rhs & r) {
+	{ l == r } -> std::convertible_to<bool>;
+};
+
+TEST_CASE("in and out sha3") {
+	// read from somewhere already calculated
+	auto hash = cthash::sha3_256_value{cthash::base64, "A0idtwV8rNRViuLCPg6DIPPUIkd69a7lLB9SiE5u/Oc="sv};
+
+	// calculating from
+	auto chash = cthash::sha3_256("aloha").final();
+	REQUIRE(hash == chash);
+
+	// they can't even be compared! because they are different type
+	REQUIRE_FALSE((comparable<decltype(chash), cthash::sha256_value>));
+
+	// literal
+	auto phash = "03489db7057cacd4558ae2c23e0e8320f3d422477af5aee52c1f52884e6efce7"_sha3_256;
+	REQUIRE(phash == chash);
+	REQUIRE(phash == hash);
+
+	// and encode into base32 (lazily, hence the helper)
+	auto ohash = stringify(hash | cthash::encode(cthash::z_base32));
+	REQUIRE(ohash == "yprj5pafx1speickhmbdhdwdrd37ee18xm4473jcd7jeouuq9uuo");
 }

@@ -34,14 +34,17 @@ template <typename T> concept convertible_to_strview = requires(const T & str) {
 
 // hash_value
 
-template <typename Encoding = cthash::encoding::hexdec, typename HashType, typename CharT = char, typename Traits = std::char_traits<CharT>> static constexpr std::optional<HashType> parse_into_hash(std::basic_string_view<CharT, Traits> view) {
+struct invalid_text_input { }; // TODO maybe do better?
+
+template <auto Encoding = cthash::hexdec, typename HashType, typename CharT = char, typename Traits = std::char_traits<CharT>> static constexpr HashType parse_into_hash(std::basic_string_view<CharT, Traits> view) {
 	// TODO check size
-	auto decoded_view = view | cthash::decode<Encoding>;
+	auto decoded_view = view | cthash::decode(Encoding);
+	// identify<decltype(decoded_view)> i;
 	const size_t needed_size = decoded_view.size();
 	if constexpr (requires { {HashType::size()} -> std::same_as<size_t>; }) {
 		if (needed_size != HashType::size()) {
 			std::cout << "needed_size (" << needed_size << ") != hash_type::size(" << HashType::size() << ")\n";
-			return std::nullopt; // or exception?
+			throw invalid_text_input{};
 		}
 	}
 	// TODO variable length hashes?
@@ -63,7 +66,10 @@ template <size_t N> struct hash_value: std::array<std::byte, N> {
 	template <typename CharT> explicit constexpr hash_value(const CharT (&in)[N * 2u + 1u]) noexcept: super{internal::hexdec_to_binary<N>(std::span<const CharT, N * 2u>(in, N * 2u))} { }
 	template <typename CharT> explicit constexpr hash_value(const fixed_string<CharT, N * 2u> & in) noexcept: super{internal::hexdec_to_binary<N>(std::span<const CharT, N * 2u>(in.data(), in.size()))} { }
 
-	template <typename Encoding = encoding::hexdec> static constexpr auto parse(const convertible_to_strview auto & str) {
+	template <encoding_type Encoding> explicit constexpr hash_value(Encoding, const convertible_to_strview auto & str): hash_value{parse<Encoding{}>(str)} {
+	}
+
+	template <auto Encoding = hexdec> static constexpr auto parse(const convertible_to_strview auto & str) {
 		return parse_into_hash<Encoding, hash_value>(std::basic_string_view{str});
 	}
 
@@ -164,9 +170,10 @@ template <typename Tag, size_t = internal::digest_bytes_length_of<Tag>> struct t
 
 	using super = hash_value<N>;
 	using super::super;
+
 	template <typename CharT> explicit constexpr tagged_hash_value(const fixed_string<CharT, N * 2u> & in) noexcept: super{in} { }
 
-	template <typename Encoding = encoding::hexdec> static constexpr auto parse(const convertible_to_strview auto & str) {
+	template <auto Encoding = hexdec> static constexpr auto parse(const convertible_to_strview auto & str) {
 		return parse_into_hash<Encoding, tagged_hash_value>(std::basic_string_view{str});
 	}
 
@@ -187,6 +194,18 @@ template <typename Tag, size_t = internal::digest_bytes_length_of<Tag>> struct t
 	template <typename Encoding = typename cthash::default_encoding<Tag>::encoding, typename CharT = char> constexpr friend auto to_fixed_string(const tagged_hash_value & value) {
 		return to_fixed_string<Encoding, CharT>(static_cast<const super &>(value));
 	}
+
+	friend constexpr bool operator==(const tagged_hash_value & lhs, const tagged_hash_value & rhs) noexcept {
+		return static_cast<const super &>(lhs) == static_cast<const super &>(rhs);
+	}
+
+	friend constexpr auto operator<=>(const tagged_hash_value & lhs, const tagged_hash_value & rhs) noexcept {
+		return static_cast<const super &>(lhs) <=> static_cast<const super &>(rhs);
+	}
+
+	template <typename Other> friend constexpr bool operator==(const tagged_hash_value & lhs, const tagged_hash_value<Other> & rhs) noexcept = delete;
+
+	template <typename Other> friend constexpr auto operator<=>(const tagged_hash_value & lhs, const tagged_hash_value<Other> & rhs) noexcept = delete;
 };
 
 template <typename T> concept variable_digest_length = T::digest_length_bit == 0u;

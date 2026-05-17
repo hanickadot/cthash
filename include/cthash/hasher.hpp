@@ -208,6 +208,10 @@ template <typename Config> struct hasher: private internal_hasher<Config> {
 	constexpr hasher(hasher &&) noexcept = default;
 	constexpr ~hasher() noexcept = default;
 
+	template <typename T> explicit constexpr hasher(T && in) noexcept requires requires(hasher & h, T && in) { h.update(in); }: hasher{} {
+		update(in);
+	}
+
 	// support for various input types
 	constexpr hasher & update(std::span<const std::byte> input) noexcept {
 		super::update_to_buffer_and_process(input);
@@ -249,7 +253,7 @@ template <typename Config> struct hasher: private internal_hasher<Config> {
 	}
 
 	// parsing hash from string
-	template <typename Encoding = encoding::hexdec> static constexpr std::optional<tagged_hash_value<Config>> parse(const convertible_to_strview auto & str) {
+	template <auto Encoding = hexdec> static constexpr tagged_hash_value<Config> parse(const convertible_to_strview auto & str) {
 		return parse_into_hash<Encoding, tagged_hash_value<Config>>(std::basic_string_view(str));
 	}
 };

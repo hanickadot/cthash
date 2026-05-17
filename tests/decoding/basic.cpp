@@ -12,61 +12,61 @@ static auto materialize(const auto & range, std::optional<size_t> expected_size 
 }
 
 TEST_CASE("decode hexdec") {
-	const auto view0 = ""sv | cthash::decode<cthash::base16>;
+	const auto view0 = ""sv | cthash::decode(cthash::base16);
 	REQUIRE(view0.size() == 0);
 	REQUIRE(materialize(view0) == "");
 
-	const auto view1 = "00000000"sv | cthash::decode<cthash::base16>;
+	const auto view1 = "00000000"sv | cthash::decode(cthash::base16);
 	REQUIRE(view1.size() == 4);
 	REQUIRE(materialize(view1) == "\0\0\0\0"sv);
 
-	const auto view2 = "3432"sv | cthash::decode<cthash::base16>;
+	const auto view2 = "3432"sv | cthash::decode(cthash::base16);
 	REQUIRE(view2.size() == 2);
 	REQUIRE(materialize(view2) == "42");
 
-	const auto view3 = "48616E61"sv | cthash::decode<cthash::base16>;
+	const auto view3 = "48616E61"sv | cthash::decode(cthash::base16);
 	REQUIRE(view3.size() == 4);
 	REQUIRE(materialize(view3) == "Hana");
 
-	const auto view4 = "48616e61"sv | cthash::decode<cthash::base16>;
+	const auto view4 = "48616e61"sv | cthash::decode(cthash::base16);
 	REQUIRE(view4.size() == 4);
 	REQUIRE(materialize(view4) == "Hana");
 }
 
 TEST_CASE("decode base64") {
-	const auto view0 = ""sv | cthash::decode<cthash::base64>;
+	const auto view0 = ""sv | cthash::decode(cthash::base64);
 	REQUIRE(view0.size() == 0);
 	REQUIRE(materialize(view0) == "");
 
-	const auto view1 = "aGVsbG8gdGhlcmU="sv | cthash::decode<cthash::base64>;
+	const auto view1 = "aGVsbG8gdGhlcmU="sv | cthash::decode(cthash::base64);
 	REQUIRE(view1.size() == 11u);
 	REQUIRE(materialize(view1) == "hello there"sv);
 	REQUIRE(materialize(view1).size() == 11u);
 
-	const auto view2 = "YmFuYW5h"sv | cthash::decode<cthash::base64>;
+	const auto view2 = "YmFuYW5h"sv | cthash::decode(cthash::base64);
 	REQUIRE(view2.size() == 6u);
 	REQUIRE(materialize(view2) == "banana"sv);
 }
 
 TEST_CASE("decode binary") {
-	const auto view0 = ""sv | cthash::decode<cthash::binary>;
+	const auto view0 = ""sv | cthash::decode(cthash::binary);
 	REQUIRE(view0.size() == 0);
 	REQUIRE(materialize(view0) == "");
 
-	const auto view1 = "00000000"sv | cthash::decode<cthash::binary>;
+	const auto view1 = "00000000"sv | cthash::decode(cthash::binary);
 	REQUIRE(view1.size() == 1u);
 	REQUIRE(materialize(view1) == "\0"sv);
 	REQUIRE(materialize(view1).size() == 1u);
 }
 
-template <typename Encoding> auto roundtrip(const std::vector<uint8_t> & provided, std::optional<std::string_view> expected_encoded = std::nullopt) {
-	const auto encoded = provided | cthash::encode<Encoding> | std::ranges::to<std::string>();
+template <auto Encoding> auto roundtrip(const std::vector<uint8_t> & provided, std::optional<std::string_view> expected_encoded = std::nullopt) {
+	const auto encoded = provided | cthash::encode(Encoding) | std::ranges::to<std::string>();
 	if (expected_encoded.has_value()) {
 		// check fi we provided how it should encoded
 		REQUIRE(encoded == *expected_encoded);
 	}
 
-	const auto decode_view = encoded | cthash::decode<Encoding>;
+	const auto decode_view = encoded | cthash::decode(Encoding);
 
 	SECTION("should give same size as provided.size()") {
 		// should give same size as provided size
@@ -80,36 +80,38 @@ template <typename Encoding> auto roundtrip(const std::vector<uint8_t> & provide
 		REQUIRE(provided == decoded);
 	}
 
-	const auto encoded2 = decoded | cthash::encode<Encoding> | std::ranges::to<std::string>();
+	const auto encoded2 = decoded | cthash::encode(Encoding) | std::ranges::to<std::string>();
 
 	SECTION("subsequent encoding should be same as first encoding") {
 		REQUIRE(encoded2 == encoded);
 	}
 }
 
-TEMPLATE_TEST_CASE("decode roundtrip", "[roundtrip]", cthash::binary, cthash::octal, cthash::octal_no_padding, cthash::hexdec, cthash::base32, cthash::base64) {
+TEMPLATE_TEST_CASE("decode roundtrip", "[roundtrip]", cthash::encoding::binary, cthash::encoding::octal, cthash::encoding::octal_no_padding, cthash::encoding::hexdec, cthash::encoding::base32, cthash::encoding::base64) {
+	static constexpr auto encoding = TestType{};
+
 	SECTION("empty") {
 		const auto provided = std::vector<uint8_t>{};
-		roundtrip<TestType>(provided);
+		roundtrip<encoding>(provided);
 	}
 	SECTION("one byte") {
 		const auto provided = std::vector<uint8_t>{0x1u};
-		roundtrip<TestType>(provided);
+		roundtrip<encoding>(provided);
 	}
 	SECTION("two bytes") {
 		const auto provided = std::vector<uint8_t>{0x1u, 0xFFu};
-		roundtrip<TestType>(provided);
+		roundtrip<encoding>(provided);
 	}
 	SECTION("three bytes") {
 		const auto provided = std::vector<uint8_t>{0x1u, 0xFFu, 0x42u};
-		roundtrip<TestType>(provided);
+		roundtrip<encoding>(provided);
 	}
 	SECTION("four bytes") {
 		const auto provided = std::vector<uint8_t>{0x1u, 0xFFu, 0x42u, 0x16u};
-		roundtrip<TestType>(provided);
+		roundtrip<encoding>(provided);
 	}
 	SECTION("five bytes") {
 		const auto provided = std::vector<uint8_t>{0x1u, 0xFFu, 0x42u, 0x16u, 011u};
-		roundtrip<TestType>(provided);
+		roundtrip<encoding>(provided);
 	}
 }

@@ -112,7 +112,17 @@ namespace encoding {
 
 	using known_encodings = list<base64, base64_no_padding, base64url, base32, base32_no_padding, z_base32, base16, base16_uppercase, base8, base4, base2>;
 
+	struct unknown {
+		static constexpr std::string_view name = "unknown";
+		static constexpr char alphabet[] = "";
+	};
+
 } // namespace encoding
+
+template <typename T> concept encoding_type = requires {
+	std::string_view{T::name};
+	std::span{T::alphabet};
+};
 
 struct translation_table {
 	static constexpr size_t table_size = 256;
