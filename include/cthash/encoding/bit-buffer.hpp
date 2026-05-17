@@ -3,7 +3,6 @@
 
 #include "concepts.hpp"
 #include <bit>
-#include <iostream>
 #include <numeric>
 #include <ranges>
 #include <cassert>
@@ -78,13 +77,11 @@ public:
 	}
 
 	template <size_t Bits> constexpr void pop() noexcept requires(Bits <= capacity()) {
-		assert(size() >= Bits);
 		bits_available -= static_cast<size_type>(Bits);
 	}
 
 	template <size_t Bits> constexpr auto front() const noexcept -> select_bit_integer_t<Bits> requires(Bits <= capacity()) {
 		using output_type = select_bit_integer_t<Bits>;
-		assert(size() >= static_cast<size_type>(Bits));
 		return static_cast<output_type>((buffer >> (bits_available - Bits))) & mask<Bits>;
 	}
 };
@@ -105,7 +102,9 @@ constexpr size_t calculate_padding_bit_count(size_t number_of_bits_in_buffer, si
 	return padding_bits;
 }
 
-template <size_t OutBits, size_t InBits = 8u> class bit_buffer: protected basic_bit_buffer<std::lcm(OutBits, InBits)> {
+template <typename> struct identify;
+
+template <size_t OutBits, size_t InBits = 8u, typename DecodeTransform = void> class bit_buffer: protected basic_bit_buffer<std::lcm(OutBits, InBits)> {
 	using super = basic_bit_buffer<std::lcm(OutBits, InBits)>;
 
 public:
@@ -125,7 +124,17 @@ public:
 	static constexpr auto aligned = std::bool_constant<capacity() == in_capacity()>{};
 
 	constexpr void push(in_type in) noexcept {
-		super::template push<in_bits>(in);
+		if constexpr (!std::same_as<void, DecodeTransform>) {
+			// FIXME: do it nicer
+			if constexpr (requires { DecodeTransform::is_padding; }) {
+				if (DecodeTransform::is_padding(in)) {
+					return; // do nothing
+				}
+			}
+			super::template push<in_bits>(DecodeTransform::convert(in));
+		} else {
+			super::template push<in_bits>(in);
+		}
 	}
 
 	constexpr void push_empty() noexcept {
@@ -159,11 +168,23 @@ public:
 	}
 
 	constexpr void pop() noexcept {
+		if constexpr (std::same_as<void, DecodeTransform>) {
+			// this assert is only for encoding which can insert padding bits
+			assert(super::size() >= static_cast<size_type>(out_bits));
+		}
 		super::template pop<out_bits>();
 	}
 
 	constexpr auto front() const noexcept -> out_type {
+		if constexpr (std::same_as<void, DecodeTransform>) {
+			// this assert is only for encoding which can insert padding bits
+			assert(super::size() >= static_cast<size_type>(out_bits));
+		}
 		return super::template front<out_bits>();
+	}
+
+	constexpr size_type bit_size() const noexcept {
+		return static_cast<size_type>(super::size());
 	}
 
 	constexpr size_type size() const noexcept {

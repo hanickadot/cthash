@@ -15,7 +15,11 @@ namespace sha256t_support {
 		} else if (t < 1000u) {
 			return 3u;
 		} else {
+#if __has_feature(cxx_exceptions)
 			throw "we don't support more than three digits!";
+#else
+			std::abort();
+#endif
 		}
 	}
 
@@ -31,7 +35,11 @@ namespace sha256t_support {
 		} else if constexpr (Width == 3) {
 			return std::array<char, Width + 8u>{'S', 'H', 'A', '-', '5', '1', '2', '/', a, b, c};
 		} else {
+#if __has_feature(cxx_exceptions)
 			throw "we don't support greater width than 3";
+#else
+			std::abort();
+#endif
 		}
 	}
 

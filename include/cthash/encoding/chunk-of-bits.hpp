@@ -2,10 +2,15 @@
 #define CTHASH_ENCODING_CHUNK_OF_BITS_HPP
 
 #include "bit-buffer.hpp"
-#include <iostream>
 #include <ranges>
 
 namespace cthash {
+
+struct no_conversion {
+	static constexpr auto operator()(auto value) noexcept {
+		return value;
+	}
+};
 
 template <typename Buffer> struct buffer_result_type;
 
@@ -53,11 +58,15 @@ template <typename Buffer, bool AllowPadding> requires(Buffer::aligned()) struct
 		return buffer.empty();
 	}
 
+	constexpr bool has_enough() const noexcept {
+		return buffer.has_bits_for_pop();
+	}
+
 	constexpr void pop() noexcept {
 		return buffer.pop();
 	}
 
-	template <typename It, typename End> constexpr void feed_buffer(It & it, End end) noexcept {
+	template <bool Decoding = false, typename It, typename End> constexpr void feed_buffer(It & it, End end) noexcept {
 		using input_value_type = std::iterator_traits<It>::value_type;
 
 		while (!buffer.has_bits_for_pop() && (it != end)) {
@@ -86,11 +95,16 @@ template <typename Buffer, bool AllowPadding> requires(!Buffer::aligned()) struc
 
 	constexpr auto front() const noexcept {
 		assert(Buffer::out_bits >= missing_bits);
+
 		return result_type{buffer.front(), missing_bits};
 	}
 
 	constexpr bool empty() const noexcept {
 		return buffer.empty();
+	}
+
+	constexpr bool has_enough() const noexcept {
+		return buffer.has_bits_for_pop();
 	}
 
 	constexpr void pop() noexcept {
@@ -118,17 +132,19 @@ template <typename Buffer, bool AllowPadding> requires(!Buffer::aligned()) struc
 		// do nothing :)
 	}
 
-	template <typename It, typename End> constexpr void feed_buffer(It & it, End end) noexcept {
+	template <bool Decoding = false, typename It, typename End> constexpr void feed_buffer(It & it, End end) noexcept {
 		using input_value_type = std::iterator_traits<It>::value_type;
 
 		for (;;) {
 			if (it == end) {
-				if (buffer.has_bits_for_pop()) {
-					// if this is second pass after padding we can mark all bits as missing
-					saturate_missing_bits();
-				} else {
-					// fill remainder of buffer with zeros
-					pad_buffer();
+				if constexpr (!Decoding) {
+					if (buffer.has_bits_for_pop()) {
+						// if this is second pass after padding we can mark all bits as missing
+						saturate_missing_bits();
+					} else {
+						// fill remainder of buffer with zeros
+						pad_buffer();
+					}
 				}
 
 				return;
@@ -158,12 +174,16 @@ template <bool Const, typename T> using maybe_const = typename conditional<Const
 
 template <typename T> concept integral_like = std::integral<T> || std::same_as<std::byte, T>;
 
-template <size_t Bits, bool AllowPadding, std::ranges::input_range Input> requires integral_like<std::ranges::range_value_t<Input>> struct chunk_of_bits_view {
+template <std::ranges::range R> static constexpr size_t value_type_bits = sizeof(std::ranges::range_value_t<R>) * 8u;
+
+template <size_t Bits, bool AllowPadding, std::ranges::input_range Input, size_t InputBits = value_type_bits<Input>, typename DecodeTransform = void, typename EncodeTransform = void> requires integral_like<std::ranges::range_value_t<Input>> struct chunk_of_bits_view {
 	using input_value_type = std::ranges::range_value_t<Input>;
 
 	static constexpr size_t output_value_bit_size = Bits;
-	static constexpr size_t input_value_bit_size = sizeof(input_value_type) * 8u;
-	using buffer_t = cthash::bit_buffer<output_value_bit_size, input_value_bit_size>;
+	static constexpr size_t input_value_bit_size = InputBits;
+	static constexpr bool decoding = !std::same_as<DecodeTransform, void>;
+	static constexpr bool encoding = !std::same_as<EncodeTransform, void>;
+	using buffer_t = cthash::bit_buffer<output_value_bit_size, input_value_bit_size, DecodeTransform>;
 	using buffer_size_t = buffer_t::size_type;
 	Input input;
 
@@ -184,7 +204,7 @@ template <size_t Bits, bool AllowPadding, std::ranges::input_range Input> requir
 
 		constexpr iterator(parent & p) noexcept: it{std::ranges::begin(p)}, end{std::ranges::end(p)} {
 			// initialize
-			buffer.feed_buffer(it, end);
+			buffer.template feed_buffer<decoding>(it, end);
 		}
 
 		iterator(const iterator &) = default;
@@ -195,7 +215,7 @@ template <size_t Bits, bool AllowPadding, std::ranges::input_range Input> requir
 
 		constexpr iterator & operator++() noexcept {
 			buffer.pop();
-			buffer.feed_buffer(it, end);
+			buffer.template feed_buffer<decoding>(it, end);
 			return *this;
 		}
 
@@ -212,7 +232,12 @@ template <size_t Bits, bool AllowPadding, std::ranges::input_range Input> requir
 		constexpr friend bool operator==(const iterator & lhs, const iterator & rhs) noexcept = default;
 
 		constexpr friend bool operator==(const iterator & self, sentinel) noexcept {
-			return self.buffer.empty();
+			if constexpr (!std::same_as<void, DecodeTransform>) {
+				// decoder in presence of padding bits can finish early
+				return !self.buffer.has_enough();
+			} else {
+				return self.buffer.empty();
+			}
 		}
 	};
 
@@ -235,17 +260,39 @@ template <size_t Bits, bool AllowPadding, std::ranges::input_range Input> requir
 		return sentinel{};
 	}
 
-	constexpr size_t size() const noexcept requires(std::ranges::sized_range<Input> && AllowPadding) {
+	constexpr size_t size() const noexcept requires(!decoding && std::ranges::sized_range<Input> && AllowPadding) {
 		// calculate with blocks
 		return ((std::ranges::size(input) + (buffer_t::in_capacity() - 1u)) / buffer_t::in_capacity()) * buffer_t::out_capacity();
 	}
 
-	constexpr size_t size() const noexcept requires(std::ranges::sized_range<Input> && !AllowPadding) {
+	constexpr size_t size() const noexcept requires(!decoding && std::ranges::sized_range<Input> && !AllowPadding) {
 		// calculate with bits
 		const size_t bit_size_of_input = std::ranges::size(input) * input_value_bit_size;
 		return (bit_size_of_input + (output_value_bit_size - 1u)) / output_value_bit_size;
 	}
+
+	constexpr size_t size() const noexcept requires(decoding && std::ranges::sized_range<Input> && !AllowPadding) {
+		// calculate with bits
+		const size_t bit_size_of_input = std::ranges::size(input) * input_value_bit_size;
+		return bit_size_of_input / output_value_bit_size;
+	}
+
+	static constexpr size_t count_padding(const Input & input) requires(decoding && std::ranges::random_access_range<Input>) {
+		const auto it = input.rbegin();
+		const auto end = input.rend();
+		const auto last = std::ranges::find_if_not(it, end, DecodeTransform::is_padding);
+		return std::ranges::distance(it, last) * input_value_bit_size;
+	}
+
+	constexpr size_t size() const noexcept requires(decoding && std::ranges::random_access_range<Input> && AllowPadding) {
+		// check for padding before
+		const size_t bit_size_of_input = std::ranges::size(input) * input_value_bit_size;
+		const size_t padding_bits = count_padding(input);
+		return ((bit_size_of_input - padding_bits)) / output_value_bit_size;
+	}
 };
+
+template <typename T> concept has_size = requires(const T & obj) { {obj.size() }->std::same_as<size_t>; };
 
 template <size_t Bits, bool AllowPadding> struct chunk_of_bits_action {
 	template <std::ranges::input_range R> constexpr friend auto operator|(R && input, chunk_of_bits_action action) {

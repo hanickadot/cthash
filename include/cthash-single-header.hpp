@@ -127,6 +127,8 @@ template <typename T, typename... Types> concept one_of = (std::same_as<T, Types
 
 template <typename T> concept byte = one_of<std::remove_cvref_t<T>, char, unsigned char, signed char, uint8_t, int8_t, std::byte>;
 
+template <typename T> concept character = one_of<std::remove_cvref_t<T>, char, unsigned char, signed char, char8_t, char16_t, char32_t, wchar_t>;
+
 template <typename Encoding> concept padded_encoding = requires() {
 	{ Encoding::padding } -> cthash::byte;
 };
@@ -607,6 +609,8 @@ template <typename T, typename... Types> concept one_of = (std::same_as<T, Types
 
 template <typename T> concept byte = one_of<std::remove_cvref_t<T>, char, unsigned char, signed char, uint8_t, int8_t, std::byte>;
 
+template <typename T> concept character = one_of<std::remove_cvref_t<T>, char, unsigned char, signed char, char8_t, char16_t, char32_t, wchar_t>;
+
 template <typename Encoding> concept padded_encoding = requires() {
 	{ Encoding::padding } -> cthash::byte;
 };
@@ -655,6 +659,7 @@ namespace encoding {
 		static constexpr std::string_view name = "base32";
 
 		static constexpr char alphabet[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+		static constexpr char alt_alphabet[] = "abcdefghijklmnopqrstuvwxyz234567";
 		static constexpr char padding = '=';
 	};
 
@@ -662,6 +667,7 @@ namespace encoding {
 		static constexpr std::string_view name = "base32_no_padding";
 
 		static constexpr char alphabet[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+		static constexpr char alt_alphabet[] = "abcdefghijklmnopqrstuvwxyz234567";
 	};
 
 	struct z_base32 {
@@ -669,6 +675,7 @@ namespace encoding {
 		static constexpr std::string_view alt_name = "zbase32";
 
 		static constexpr char alphabet[] = "ybndrfg8ejkmcpqxot1uwisza345h769";
+		static constexpr char alt_alphabet[] = "YBNDRFG8EJKMCPQXOT1UWISZA345H769";
 	};
 
 	struct base16 {
@@ -676,6 +683,7 @@ namespace encoding {
 		static constexpr std::string_view alt_name = "hexdec";
 
 		static constexpr char alphabet[] = "0123456789abcdef";
+		static constexpr char alt_alphabet[] = "0123456789ABCDEF";
 	};
 
 	using hexdec = base16;
@@ -685,6 +693,7 @@ namespace encoding {
 		static constexpr std::string_view alt_name = "HEXDEC";
 
 		static constexpr char alphabet[] = "0123456789ABCDEF";
+		static constexpr char alt_alphabet[] = "0123456789abcdef";
 	};
 
 	using hexdec_uppercase = base16_uppercase;
@@ -717,6 +726,35 @@ namespace encoding {
 	using known_encodings = list<base64, base64_no_padding, base64url, base32, base32_no_padding, z_base32, base16, base16_uppercase, base8, base4, base2>;
 
 } // namespace encoding
+
+struct translation_table {
+	static constexpr size_t table_size = 256;
+	uint8_t data[table_size];
+	consteval translation_table() {
+		for (size_t i = 0; i != table_size; ++i) {
+			data[i] = 255u;
+		}
+	}
+	consteval bool insert_alphabet(std::string_view input) {
+		const size_t length = input.size();
+		for (size_t i = 0; i != length; ++i) {
+			const size_t c = static_cast<size_t>(static_cast<unsigned char>(input[i]));
+			data[c] = static_cast<uint8_t>(i);
+		}
+		return true;
+	}
+};
+
+template <typename Encoding> struct decoding_alphabet {
+	static constexpr auto table = [] {
+		translation_table output{};
+		output.insert_alphabet(Encoding::alphabet);
+		if constexpr (requires { Encoding::alt_alphabet; }) {
+			output.insert_alphabet(Encoding::alt_alphabet);
+		}
+		return output;
+	}();
+};
 
 template <typename Defs> struct dynamic_encodings;
 
@@ -760,7 +798,11 @@ template <typename... List> struct dynamic_encodings<encoding::list<List...>>: s
 		const auto success = (unsigned(assign_encoding<List>(name, output)) | ... | 0u);
 
 		if (!success) {
+#if __has_feature(cxx_exceptions)
 			throw std::invalid_argument{"unknown encoding name"};
+#else
+			std::abort();
+#endif
 		}
 
 		assert(output.has_value());
@@ -931,7 +973,10 @@ template <typename Encoding, typename CharT, typename R> struct encode_to_view {
 	}
 };
 
-template <typename Encoding, typename ValueT, typename R> struct decode_from_view {
+template <typename Encoding, typename R> struct decode_from_view {
+	using table = decoding_alphabet<Encoding>;
+	using input_value_type = std::ranges::range_value_t<R>;
+
 	R input;
 
 	template <bool Const> struct iterator { };
@@ -965,44 +1010,61 @@ template <typename Encoding, typename CharT = char> struct encode_to_action {
 	}
 };
 
-template <typename Encoding, typename ValueT = unsigned char> struct decode_from_action {
-	template <std::ranges::input_range R> constexpr friend auto operator|(R && input, decode_from_action action) {
+template <typename Encoding> struct decode_from_action {
+	template <std::ranges::input_range R> constexpr friend auto operator|(R && input, decode_from_action action) requires(character<std::ranges::range_value_t<R>>) {
 		return action.operator()<R>(std::forward<R>(input));
 	}
-	template <std::ranges::input_range R> constexpr auto operator()(R && input) const {
-		return decode_from_view<Encoding, ValueT, R>(std::forward<R>(input));
+	template <std::ranges::input_range R> constexpr auto operator()(R && input) const requires(character<std::ranges::range_value_t<R>>) {
+		return decode_from_view<Encoding, R>(std::forward<R>(input));
 	}
 };
 
 template <typename Encoding, typename CharT = char> constexpr auto encode_to = encode_to_action<Encoding, CharT>{};
-template <typename Encoding, typename ValueT = unsigned char> constexpr auto decode_from = decode_from_action<Encoding, ValueT>{};
+template <typename Encoding> constexpr auto decode_from = decode_from_action<Encoding>{};
 
-constexpr auto binary_encode = encode_to<encoding::base2, char>;
-constexpr auto base2_encode = encode_to<encoding::base2, char>;
-constexpr auto base4_encode = encode_to<encoding::base4, char>;
-constexpr auto base8_encode = encode_to<encoding::base8, char>;
-constexpr auto octal_encode = encode_to<encoding::base8, char>;
-constexpr auto hexdec_encode = encode_to<encoding::base16, char>;
-constexpr auto hexdec_uppercase_encode = encode_to<encoding::base16_uppercase, char>;
-constexpr auto base16_encode = encode_to<encoding::base16, char>;
-constexpr auto base32_encode = encode_to<encoding::base32, char>;
-constexpr auto base32_no_padding_encode = encode_to<encoding::base32_no_padding, char>;
-constexpr auto z_base32_encode = encode_to<encoding::z_base32, char>;
-constexpr auto base64_encode = encode_to<encoding::base64, char>;
-constexpr auto base64url_encode = encode_to<encoding::base64url, char>;
-constexpr auto base64_no_padding_encode = encode_to<encoding::base64_no_padding, char>;
+// encoding interface
+template <typename CharT = char> constexpr auto binary_encode_to = encode_to<encoding::base2, CharT>;
+template <typename CharT = char> constexpr auto base2_encode_to = encode_to<encoding::base2, CharT>;
+template <typename CharT = char> constexpr auto base4_encode_to = encode_to<encoding::base4, CharT>;
+template <typename CharT = char> constexpr auto base8_encode_to = encode_to<encoding::base8, CharT>;
+template <typename CharT = char> constexpr auto octal_encode_to = encode_to<encoding::base8, CharT>;
+template <typename CharT = char> constexpr auto hexdec_encode_to = encode_to<encoding::base16, CharT>;
+template <typename CharT = char> constexpr auto hexdec_uppercase_encode_to = encode_to<encoding::base16_uppercase, CharT>;
+template <typename CharT = char> constexpr auto base16_encode_to = encode_to<encoding::base16, CharT>;
+template <typename CharT = char> constexpr auto base32_encode_to = encode_to<encoding::base32, CharT>;
+template <typename CharT = char> constexpr auto base32_no_padding_encode_to = encode_to<encoding::base32_no_padding, CharT>;
+template <typename CharT = char> constexpr auto z_base32_encode_to = encode_to<encoding::z_base32, CharT>;
+template <typename CharT = char> constexpr auto base64_encode_to = encode_to<encoding::base64, CharT>;
+template <typename CharT = char> constexpr auto base64url_encode_to = encode_to<encoding::base64url, CharT>;
+template <typename CharT = char> constexpr auto base64_no_padding_encode_to = encode_to<encoding::base64_no_padding, CharT>;
 
-constexpr auto binary_decode = decode_from<encoding::base2, char>;
-constexpr auto base2_decode = decode_from<encoding::base2, char>;
-constexpr auto base4_decode = decode_from<encoding::base4, char>;
-constexpr auto base8_decode = decode_from<encoding::base8, char>;
-constexpr auto hexdec_decode = decode_from<encoding::base16, char>;
-constexpr auto base16_decode = decode_from<encoding::base16, char>;
-constexpr auto base32_decode = decode_from<encoding::base32, char>;
-constexpr auto z_base32_decode = decode_from<encoding::z_base32, char>;
-constexpr auto base64_decode = decode_from<encoding::base64, char>;
-constexpr auto base64url_decode = decode_from<encoding::base64url, char>;
-constexpr auto base64_no_padding_decode = decode_from<encoding::base64_no_padding, char>;
+constexpr auto binary_encode = binary_encode_to<char>;
+constexpr auto base2_encode = base2_encode_to<char>;
+constexpr auto base4_encode = base4_encode_to<char>;
+constexpr auto base8_encode = base8_encode_to<char>;
+constexpr auto octal_encode = octal_encode_to<char>;
+constexpr auto hexdec_encode = hexdec_encode_to<char>;
+constexpr auto hexdec_uppercase_encode = hexdec_uppercase_encode_to<char>;
+constexpr auto base16_encode = base16_encode_to<char>;
+constexpr auto base32_encode = base32_encode_to<char>;
+constexpr auto base32_no_padding_encode = base32_no_padding_encode_to<char>;
+constexpr auto z_base32_encode = z_base32_encode_to<char>;
+constexpr auto base64_encode = base64_encode_to<char>;
+constexpr auto base64url_encode = base64url_encode_to<char>;
+constexpr auto base64_no_padding_encode = base64_no_padding_encode_to<char>;
+
+// decoding
+constexpr auto binary_decode = decode_from<encoding::base2>;
+constexpr auto base2_decode = decode_from<encoding::base2>;
+constexpr auto base4_decode = decode_from<encoding::base4>;
+constexpr auto base8_decode = decode_from<encoding::base8>;
+constexpr auto hexdec_decode = decode_from<encoding::base16>;
+constexpr auto base16_decode = decode_from<encoding::base16>;
+constexpr auto base32_decode = decode_from<encoding::base32>;
+constexpr auto z_base32_decode = decode_from<encoding::z_base32>;
+constexpr auto base64_decode = decode_from<encoding::base64>;
+constexpr auto base64url_decode = decode_from<encoding::base64url>;
+constexpr auto base64_no_padding_decode = decode_from<encoding::base64_no_padding>;
 
 } // namespace cthash
 
@@ -1053,6 +1115,8 @@ template <typename T, typename... Types> concept one_of = (std::same_as<T, Types
 
 template <typename T> concept byte = one_of<std::remove_cvref_t<T>, char, unsigned char, signed char, uint8_t, int8_t, std::byte>;
 
+template <typename T> concept character = one_of<std::remove_cvref_t<T>, char, unsigned char, signed char, char8_t, char16_t, char32_t, wchar_t>;
+
 template <typename Encoding> concept padded_encoding = requires() {
 	{ Encoding::padding } -> cthash::byte;
 };
@@ -1101,6 +1165,7 @@ namespace encoding {
 		static constexpr std::string_view name = "base32";
 
 		static constexpr char alphabet[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+		static constexpr char alt_alphabet[] = "abcdefghijklmnopqrstuvwxyz234567";
 		static constexpr char padding = '=';
 	};
 
@@ -1108,6 +1173,7 @@ namespace encoding {
 		static constexpr std::string_view name = "base32_no_padding";
 
 		static constexpr char alphabet[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+		static constexpr char alt_alphabet[] = "abcdefghijklmnopqrstuvwxyz234567";
 	};
 
 	struct z_base32 {
@@ -1115,6 +1181,7 @@ namespace encoding {
 		static constexpr std::string_view alt_name = "zbase32";
 
 		static constexpr char alphabet[] = "ybndrfg8ejkmcpqxot1uwisza345h769";
+		static constexpr char alt_alphabet[] = "YBNDRFG8EJKMCPQXOT1UWISZA345H769";
 	};
 
 	struct base16 {
@@ -1122,6 +1189,7 @@ namespace encoding {
 		static constexpr std::string_view alt_name = "hexdec";
 
 		static constexpr char alphabet[] = "0123456789abcdef";
+		static constexpr char alt_alphabet[] = "0123456789ABCDEF";
 	};
 
 	using hexdec = base16;
@@ -1131,6 +1199,7 @@ namespace encoding {
 		static constexpr std::string_view alt_name = "HEXDEC";
 
 		static constexpr char alphabet[] = "0123456789ABCDEF";
+		static constexpr char alt_alphabet[] = "0123456789abcdef";
 	};
 
 	using hexdec_uppercase = base16_uppercase;
@@ -1163,6 +1232,35 @@ namespace encoding {
 	using known_encodings = list<base64, base64_no_padding, base64url, base32, base32_no_padding, z_base32, base16, base16_uppercase, base8, base4, base2>;
 
 } // namespace encoding
+
+struct translation_table {
+	static constexpr size_t table_size = 256;
+	uint8_t data[table_size];
+	consteval translation_table() {
+		for (size_t i = 0; i != table_size; ++i) {
+			data[i] = 255u;
+		}
+	}
+	consteval bool insert_alphabet(std::string_view input) {
+		const size_t length = input.size();
+		for (size_t i = 0; i != length; ++i) {
+			const size_t c = static_cast<size_t>(static_cast<unsigned char>(input[i]));
+			data[c] = static_cast<uint8_t>(i);
+		}
+		return true;
+	}
+};
+
+template <typename Encoding> struct decoding_alphabet {
+	static constexpr auto table = [] {
+		translation_table output{};
+		output.insert_alphabet(Encoding::alphabet);
+		if constexpr (requires { Encoding::alt_alphabet; }) {
+			output.insert_alphabet(Encoding::alt_alphabet);
+		}
+		return output;
+	}();
+};
 
 template <typename Defs> struct dynamic_encodings;
 
@@ -1206,7 +1304,11 @@ template <typename... List> struct dynamic_encodings<encoding::list<List...>>: s
 		const auto success = (unsigned(assign_encoding<List>(name, output)) | ... | 0u);
 
 		if (!success) {
+#if __has_feature(cxx_exceptions)
 			throw std::invalid_argument{"unknown encoding name"};
+#else
+			std::abort();
+#endif
 		}
 
 		assert(output.has_value());
@@ -2385,6 +2487,8 @@ template <typename T, typename... Types> concept one_of = (std::same_as<T, Types
 
 template <typename T> concept byte = one_of<std::remove_cvref_t<T>, char, unsigned char, signed char, uint8_t, int8_t, std::byte>;
 
+template <typename T> concept character = one_of<std::remove_cvref_t<T>, char, unsigned char, signed char, char8_t, char16_t, char32_t, wchar_t>;
+
 template <typename Encoding> concept padded_encoding = requires() {
 	{ Encoding::padding } -> cthash::byte;
 };
@@ -2865,6 +2969,8 @@ template <typename T, typename... Types> concept one_of = (std::same_as<T, Types
 
 template <typename T> concept byte = one_of<std::remove_cvref_t<T>, char, unsigned char, signed char, uint8_t, int8_t, std::byte>;
 
+template <typename T> concept character = one_of<std::remove_cvref_t<T>, char, unsigned char, signed char, char8_t, char16_t, char32_t, wchar_t>;
+
 template <typename Encoding> concept padded_encoding = requires() {
 	{ Encoding::padding } -> cthash::byte;
 };
@@ -2913,6 +3019,7 @@ namespace encoding {
 		static constexpr std::string_view name = "base32";
 
 		static constexpr char alphabet[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+		static constexpr char alt_alphabet[] = "abcdefghijklmnopqrstuvwxyz234567";
 		static constexpr char padding = '=';
 	};
 
@@ -2920,6 +3027,7 @@ namespace encoding {
 		static constexpr std::string_view name = "base32_no_padding";
 
 		static constexpr char alphabet[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+		static constexpr char alt_alphabet[] = "abcdefghijklmnopqrstuvwxyz234567";
 	};
 
 	struct z_base32 {
@@ -2927,6 +3035,7 @@ namespace encoding {
 		static constexpr std::string_view alt_name = "zbase32";
 
 		static constexpr char alphabet[] = "ybndrfg8ejkmcpqxot1uwisza345h769";
+		static constexpr char alt_alphabet[] = "YBNDRFG8EJKMCPQXOT1UWISZA345H769";
 	};
 
 	struct base16 {
@@ -2934,6 +3043,7 @@ namespace encoding {
 		static constexpr std::string_view alt_name = "hexdec";
 
 		static constexpr char alphabet[] = "0123456789abcdef";
+		static constexpr char alt_alphabet[] = "0123456789ABCDEF";
 	};
 
 	using hexdec = base16;
@@ -2943,6 +3053,7 @@ namespace encoding {
 		static constexpr std::string_view alt_name = "HEXDEC";
 
 		static constexpr char alphabet[] = "0123456789ABCDEF";
+		static constexpr char alt_alphabet[] = "0123456789abcdef";
 	};
 
 	using hexdec_uppercase = base16_uppercase;
@@ -2975,6 +3086,35 @@ namespace encoding {
 	using known_encodings = list<base64, base64_no_padding, base64url, base32, base32_no_padding, z_base32, base16, base16_uppercase, base8, base4, base2>;
 
 } // namespace encoding
+
+struct translation_table {
+	static constexpr size_t table_size = 256;
+	uint8_t data[table_size];
+	consteval translation_table() {
+		for (size_t i = 0; i != table_size; ++i) {
+			data[i] = 255u;
+		}
+	}
+	consteval bool insert_alphabet(std::string_view input) {
+		const size_t length = input.size();
+		for (size_t i = 0; i != length; ++i) {
+			const size_t c = static_cast<size_t>(static_cast<unsigned char>(input[i]));
+			data[c] = static_cast<uint8_t>(i);
+		}
+		return true;
+	}
+};
+
+template <typename Encoding> struct decoding_alphabet {
+	static constexpr auto table = [] {
+		translation_table output{};
+		output.insert_alphabet(Encoding::alphabet);
+		if constexpr (requires { Encoding::alt_alphabet; }) {
+			output.insert_alphabet(Encoding::alt_alphabet);
+		}
+		return output;
+	}();
+};
 
 template <typename Defs> struct dynamic_encodings;
 
@@ -3018,7 +3158,11 @@ template <typename... List> struct dynamic_encodings<encoding::list<List...>>: s
 		const auto success = (unsigned(assign_encoding<List>(name, output)) | ... | 0u);
 
 		if (!success) {
+#if __has_feature(cxx_exceptions)
 			throw std::invalid_argument{"unknown encoding name"};
+#else
+			std::abort();
+#endif
 		}
 
 		assert(output.has_value());
@@ -3189,7 +3333,10 @@ template <typename Encoding, typename CharT, typename R> struct encode_to_view {
 	}
 };
 
-template <typename Encoding, typename ValueT, typename R> struct decode_from_view {
+template <typename Encoding, typename R> struct decode_from_view {
+	using table = decoding_alphabet<Encoding>;
+	using input_value_type = std::ranges::range_value_t<R>;
+
 	R input;
 
 	template <bool Const> struct iterator { };
@@ -3223,44 +3370,61 @@ template <typename Encoding, typename CharT = char> struct encode_to_action {
 	}
 };
 
-template <typename Encoding, typename ValueT = unsigned char> struct decode_from_action {
-	template <std::ranges::input_range R> constexpr friend auto operator|(R && input, decode_from_action action) {
+template <typename Encoding> struct decode_from_action {
+	template <std::ranges::input_range R> constexpr friend auto operator|(R && input, decode_from_action action) requires(character<std::ranges::range_value_t<R>>) {
 		return action.operator()<R>(std::forward<R>(input));
 	}
-	template <std::ranges::input_range R> constexpr auto operator()(R && input) const {
-		return decode_from_view<Encoding, ValueT, R>(std::forward<R>(input));
+	template <std::ranges::input_range R> constexpr auto operator()(R && input) const requires(character<std::ranges::range_value_t<R>>) {
+		return decode_from_view<Encoding, R>(std::forward<R>(input));
 	}
 };
 
 template <typename Encoding, typename CharT = char> constexpr auto encode_to = encode_to_action<Encoding, CharT>{};
-template <typename Encoding, typename ValueT = unsigned char> constexpr auto decode_from = decode_from_action<Encoding, ValueT>{};
+template <typename Encoding> constexpr auto decode_from = decode_from_action<Encoding>{};
 
-constexpr auto binary_encode = encode_to<encoding::base2, char>;
-constexpr auto base2_encode = encode_to<encoding::base2, char>;
-constexpr auto base4_encode = encode_to<encoding::base4, char>;
-constexpr auto base8_encode = encode_to<encoding::base8, char>;
-constexpr auto octal_encode = encode_to<encoding::base8, char>;
-constexpr auto hexdec_encode = encode_to<encoding::base16, char>;
-constexpr auto hexdec_uppercase_encode = encode_to<encoding::base16_uppercase, char>;
-constexpr auto base16_encode = encode_to<encoding::base16, char>;
-constexpr auto base32_encode = encode_to<encoding::base32, char>;
-constexpr auto base32_no_padding_encode = encode_to<encoding::base32_no_padding, char>;
-constexpr auto z_base32_encode = encode_to<encoding::z_base32, char>;
-constexpr auto base64_encode = encode_to<encoding::base64, char>;
-constexpr auto base64url_encode = encode_to<encoding::base64url, char>;
-constexpr auto base64_no_padding_encode = encode_to<encoding::base64_no_padding, char>;
+// encoding interface
+template <typename CharT = char> constexpr auto binary_encode_to = encode_to<encoding::base2, CharT>;
+template <typename CharT = char> constexpr auto base2_encode_to = encode_to<encoding::base2, CharT>;
+template <typename CharT = char> constexpr auto base4_encode_to = encode_to<encoding::base4, CharT>;
+template <typename CharT = char> constexpr auto base8_encode_to = encode_to<encoding::base8, CharT>;
+template <typename CharT = char> constexpr auto octal_encode_to = encode_to<encoding::base8, CharT>;
+template <typename CharT = char> constexpr auto hexdec_encode_to = encode_to<encoding::base16, CharT>;
+template <typename CharT = char> constexpr auto hexdec_uppercase_encode_to = encode_to<encoding::base16_uppercase, CharT>;
+template <typename CharT = char> constexpr auto base16_encode_to = encode_to<encoding::base16, CharT>;
+template <typename CharT = char> constexpr auto base32_encode_to = encode_to<encoding::base32, CharT>;
+template <typename CharT = char> constexpr auto base32_no_padding_encode_to = encode_to<encoding::base32_no_padding, CharT>;
+template <typename CharT = char> constexpr auto z_base32_encode_to = encode_to<encoding::z_base32, CharT>;
+template <typename CharT = char> constexpr auto base64_encode_to = encode_to<encoding::base64, CharT>;
+template <typename CharT = char> constexpr auto base64url_encode_to = encode_to<encoding::base64url, CharT>;
+template <typename CharT = char> constexpr auto base64_no_padding_encode_to = encode_to<encoding::base64_no_padding, CharT>;
 
-constexpr auto binary_decode = decode_from<encoding::base2, char>;
-constexpr auto base2_decode = decode_from<encoding::base2, char>;
-constexpr auto base4_decode = decode_from<encoding::base4, char>;
-constexpr auto base8_decode = decode_from<encoding::base8, char>;
-constexpr auto hexdec_decode = decode_from<encoding::base16, char>;
-constexpr auto base16_decode = decode_from<encoding::base16, char>;
-constexpr auto base32_decode = decode_from<encoding::base32, char>;
-constexpr auto z_base32_decode = decode_from<encoding::z_base32, char>;
-constexpr auto base64_decode = decode_from<encoding::base64, char>;
-constexpr auto base64url_decode = decode_from<encoding::base64url, char>;
-constexpr auto base64_no_padding_decode = decode_from<encoding::base64_no_padding, char>;
+constexpr auto binary_encode = binary_encode_to<char>;
+constexpr auto base2_encode = base2_encode_to<char>;
+constexpr auto base4_encode = base4_encode_to<char>;
+constexpr auto base8_encode = base8_encode_to<char>;
+constexpr auto octal_encode = octal_encode_to<char>;
+constexpr auto hexdec_encode = hexdec_encode_to<char>;
+constexpr auto hexdec_uppercase_encode = hexdec_uppercase_encode_to<char>;
+constexpr auto base16_encode = base16_encode_to<char>;
+constexpr auto base32_encode = base32_encode_to<char>;
+constexpr auto base32_no_padding_encode = base32_no_padding_encode_to<char>;
+constexpr auto z_base32_encode = z_base32_encode_to<char>;
+constexpr auto base64_encode = base64_encode_to<char>;
+constexpr auto base64url_encode = base64url_encode_to<char>;
+constexpr auto base64_no_padding_encode = base64_no_padding_encode_to<char>;
+
+// decoding
+constexpr auto binary_decode = decode_from<encoding::base2>;
+constexpr auto base2_decode = decode_from<encoding::base2>;
+constexpr auto base4_decode = decode_from<encoding::base4>;
+constexpr auto base8_decode = decode_from<encoding::base8>;
+constexpr auto hexdec_decode = decode_from<encoding::base16>;
+constexpr auto base16_decode = decode_from<encoding::base16>;
+constexpr auto base32_decode = decode_from<encoding::base32>;
+constexpr auto z_base32_decode = decode_from<encoding::z_base32>;
+constexpr auto base64_decode = decode_from<encoding::base64>;
+constexpr auto base64url_decode = decode_from<encoding::base64url>;
+constexpr auto base64_no_padding_decode = decode_from<encoding::base64_no_padding>;
 
 } // namespace cthash
 
@@ -3311,6 +3475,8 @@ template <typename T, typename... Types> concept one_of = (std::same_as<T, Types
 
 template <typename T> concept byte = one_of<std::remove_cvref_t<T>, char, unsigned char, signed char, uint8_t, int8_t, std::byte>;
 
+template <typename T> concept character = one_of<std::remove_cvref_t<T>, char, unsigned char, signed char, char8_t, char16_t, char32_t, wchar_t>;
+
 template <typename Encoding> concept padded_encoding = requires() {
 	{ Encoding::padding } -> cthash::byte;
 };
@@ -3359,6 +3525,7 @@ namespace encoding {
 		static constexpr std::string_view name = "base32";
 
 		static constexpr char alphabet[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+		static constexpr char alt_alphabet[] = "abcdefghijklmnopqrstuvwxyz234567";
 		static constexpr char padding = '=';
 	};
 
@@ -3366,6 +3533,7 @@ namespace encoding {
 		static constexpr std::string_view name = "base32_no_padding";
 
 		static constexpr char alphabet[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+		static constexpr char alt_alphabet[] = "abcdefghijklmnopqrstuvwxyz234567";
 	};
 
 	struct z_base32 {
@@ -3373,6 +3541,7 @@ namespace encoding {
 		static constexpr std::string_view alt_name = "zbase32";
 
 		static constexpr char alphabet[] = "ybndrfg8ejkmcpqxot1uwisza345h769";
+		static constexpr char alt_alphabet[] = "YBNDRFG8EJKMCPQXOT1UWISZA345H769";
 	};
 
 	struct base16 {
@@ -3380,6 +3549,7 @@ namespace encoding {
 		static constexpr std::string_view alt_name = "hexdec";
 
 		static constexpr char alphabet[] = "0123456789abcdef";
+		static constexpr char alt_alphabet[] = "0123456789ABCDEF";
 	};
 
 	using hexdec = base16;
@@ -3389,6 +3559,7 @@ namespace encoding {
 		static constexpr std::string_view alt_name = "HEXDEC";
 
 		static constexpr char alphabet[] = "0123456789ABCDEF";
+		static constexpr char alt_alphabet[] = "0123456789abcdef";
 	};
 
 	using hexdec_uppercase = base16_uppercase;
@@ -3421,6 +3592,35 @@ namespace encoding {
 	using known_encodings = list<base64, base64_no_padding, base64url, base32, base32_no_padding, z_base32, base16, base16_uppercase, base8, base4, base2>;
 
 } // namespace encoding
+
+struct translation_table {
+	static constexpr size_t table_size = 256;
+	uint8_t data[table_size];
+	consteval translation_table() {
+		for (size_t i = 0; i != table_size; ++i) {
+			data[i] = 255u;
+		}
+	}
+	consteval bool insert_alphabet(std::string_view input) {
+		const size_t length = input.size();
+		for (size_t i = 0; i != length; ++i) {
+			const size_t c = static_cast<size_t>(static_cast<unsigned char>(input[i]));
+			data[c] = static_cast<uint8_t>(i);
+		}
+		return true;
+	}
+};
+
+template <typename Encoding> struct decoding_alphabet {
+	static constexpr auto table = [] {
+		translation_table output{};
+		output.insert_alphabet(Encoding::alphabet);
+		if constexpr (requires { Encoding::alt_alphabet; }) {
+			output.insert_alphabet(Encoding::alt_alphabet);
+		}
+		return output;
+	}();
+};
 
 template <typename Defs> struct dynamic_encodings;
 
@@ -3464,7 +3664,11 @@ template <typename... List> struct dynamic_encodings<encoding::list<List...>>: s
 		const auto success = (unsigned(assign_encoding<List>(name, output)) | ... | 0u);
 
 		if (!success) {
+#if __has_feature(cxx_exceptions)
 			throw std::invalid_argument{"unknown encoding name"};
+#else
+			std::abort();
+#endif
 		}
 
 		assert(output.has_value());
@@ -4617,6 +4821,8 @@ template <typename T, typename... Types> concept one_of = (std::same_as<T, Types
 
 template <typename T> concept byte = one_of<std::remove_cvref_t<T>, char, unsigned char, signed char, uint8_t, int8_t, std::byte>;
 
+template <typename T> concept character = one_of<std::remove_cvref_t<T>, char, unsigned char, signed char, char8_t, char16_t, char32_t, wchar_t>;
+
 template <typename Encoding> concept padded_encoding = requires() {
 	{ Encoding::padding } -> cthash::byte;
 };
@@ -5097,6 +5303,8 @@ template <typename T, typename... Types> concept one_of = (std::same_as<T, Types
 
 template <typename T> concept byte = one_of<std::remove_cvref_t<T>, char, unsigned char, signed char, uint8_t, int8_t, std::byte>;
 
+template <typename T> concept character = one_of<std::remove_cvref_t<T>, char, unsigned char, signed char, char8_t, char16_t, char32_t, wchar_t>;
+
 template <typename Encoding> concept padded_encoding = requires() {
 	{ Encoding::padding } -> cthash::byte;
 };
@@ -5145,6 +5353,7 @@ namespace encoding {
 		static constexpr std::string_view name = "base32";
 
 		static constexpr char alphabet[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+		static constexpr char alt_alphabet[] = "abcdefghijklmnopqrstuvwxyz234567";
 		static constexpr char padding = '=';
 	};
 
@@ -5152,6 +5361,7 @@ namespace encoding {
 		static constexpr std::string_view name = "base32_no_padding";
 
 		static constexpr char alphabet[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+		static constexpr char alt_alphabet[] = "abcdefghijklmnopqrstuvwxyz234567";
 	};
 
 	struct z_base32 {
@@ -5159,6 +5369,7 @@ namespace encoding {
 		static constexpr std::string_view alt_name = "zbase32";
 
 		static constexpr char alphabet[] = "ybndrfg8ejkmcpqxot1uwisza345h769";
+		static constexpr char alt_alphabet[] = "YBNDRFG8EJKMCPQXOT1UWISZA345H769";
 	};
 
 	struct base16 {
@@ -5166,6 +5377,7 @@ namespace encoding {
 		static constexpr std::string_view alt_name = "hexdec";
 
 		static constexpr char alphabet[] = "0123456789abcdef";
+		static constexpr char alt_alphabet[] = "0123456789ABCDEF";
 	};
 
 	using hexdec = base16;
@@ -5175,6 +5387,7 @@ namespace encoding {
 		static constexpr std::string_view alt_name = "HEXDEC";
 
 		static constexpr char alphabet[] = "0123456789ABCDEF";
+		static constexpr char alt_alphabet[] = "0123456789abcdef";
 	};
 
 	using hexdec_uppercase = base16_uppercase;
@@ -5207,6 +5420,35 @@ namespace encoding {
 	using known_encodings = list<base64, base64_no_padding, base64url, base32, base32_no_padding, z_base32, base16, base16_uppercase, base8, base4, base2>;
 
 } // namespace encoding
+
+struct translation_table {
+	static constexpr size_t table_size = 256;
+	uint8_t data[table_size];
+	consteval translation_table() {
+		for (size_t i = 0; i != table_size; ++i) {
+			data[i] = 255u;
+		}
+	}
+	consteval bool insert_alphabet(std::string_view input) {
+		const size_t length = input.size();
+		for (size_t i = 0; i != length; ++i) {
+			const size_t c = static_cast<size_t>(static_cast<unsigned char>(input[i]));
+			data[c] = static_cast<uint8_t>(i);
+		}
+		return true;
+	}
+};
+
+template <typename Encoding> struct decoding_alphabet {
+	static constexpr auto table = [] {
+		translation_table output{};
+		output.insert_alphabet(Encoding::alphabet);
+		if constexpr (requires { Encoding::alt_alphabet; }) {
+			output.insert_alphabet(Encoding::alt_alphabet);
+		}
+		return output;
+	}();
+};
 
 template <typename Defs> struct dynamic_encodings;
 
@@ -5250,7 +5492,11 @@ template <typename... List> struct dynamic_encodings<encoding::list<List...>>: s
 		const auto success = (unsigned(assign_encoding<List>(name, output)) | ... | 0u);
 
 		if (!success) {
+#if __has_feature(cxx_exceptions)
 			throw std::invalid_argument{"unknown encoding name"};
+#else
+			std::abort();
+#endif
 		}
 
 		assert(output.has_value());
@@ -5421,7 +5667,10 @@ template <typename Encoding, typename CharT, typename R> struct encode_to_view {
 	}
 };
 
-template <typename Encoding, typename ValueT, typename R> struct decode_from_view {
+template <typename Encoding, typename R> struct decode_from_view {
+	using table = decoding_alphabet<Encoding>;
+	using input_value_type = std::ranges::range_value_t<R>;
+
 	R input;
 
 	template <bool Const> struct iterator { };
@@ -5455,44 +5704,61 @@ template <typename Encoding, typename CharT = char> struct encode_to_action {
 	}
 };
 
-template <typename Encoding, typename ValueT = unsigned char> struct decode_from_action {
-	template <std::ranges::input_range R> constexpr friend auto operator|(R && input, decode_from_action action) {
+template <typename Encoding> struct decode_from_action {
+	template <std::ranges::input_range R> constexpr friend auto operator|(R && input, decode_from_action action) requires(character<std::ranges::range_value_t<R>>) {
 		return action.operator()<R>(std::forward<R>(input));
 	}
-	template <std::ranges::input_range R> constexpr auto operator()(R && input) const {
-		return decode_from_view<Encoding, ValueT, R>(std::forward<R>(input));
+	template <std::ranges::input_range R> constexpr auto operator()(R && input) const requires(character<std::ranges::range_value_t<R>>) {
+		return decode_from_view<Encoding, R>(std::forward<R>(input));
 	}
 };
 
 template <typename Encoding, typename CharT = char> constexpr auto encode_to = encode_to_action<Encoding, CharT>{};
-template <typename Encoding, typename ValueT = unsigned char> constexpr auto decode_from = decode_from_action<Encoding, ValueT>{};
+template <typename Encoding> constexpr auto decode_from = decode_from_action<Encoding>{};
 
-constexpr auto binary_encode = encode_to<encoding::base2, char>;
-constexpr auto base2_encode = encode_to<encoding::base2, char>;
-constexpr auto base4_encode = encode_to<encoding::base4, char>;
-constexpr auto base8_encode = encode_to<encoding::base8, char>;
-constexpr auto octal_encode = encode_to<encoding::base8, char>;
-constexpr auto hexdec_encode = encode_to<encoding::base16, char>;
-constexpr auto hexdec_uppercase_encode = encode_to<encoding::base16_uppercase, char>;
-constexpr auto base16_encode = encode_to<encoding::base16, char>;
-constexpr auto base32_encode = encode_to<encoding::base32, char>;
-constexpr auto base32_no_padding_encode = encode_to<encoding::base32_no_padding, char>;
-constexpr auto z_base32_encode = encode_to<encoding::z_base32, char>;
-constexpr auto base64_encode = encode_to<encoding::base64, char>;
-constexpr auto base64url_encode = encode_to<encoding::base64url, char>;
-constexpr auto base64_no_padding_encode = encode_to<encoding::base64_no_padding, char>;
+// encoding interface
+template <typename CharT = char> constexpr auto binary_encode_to = encode_to<encoding::base2, CharT>;
+template <typename CharT = char> constexpr auto base2_encode_to = encode_to<encoding::base2, CharT>;
+template <typename CharT = char> constexpr auto base4_encode_to = encode_to<encoding::base4, CharT>;
+template <typename CharT = char> constexpr auto base8_encode_to = encode_to<encoding::base8, CharT>;
+template <typename CharT = char> constexpr auto octal_encode_to = encode_to<encoding::base8, CharT>;
+template <typename CharT = char> constexpr auto hexdec_encode_to = encode_to<encoding::base16, CharT>;
+template <typename CharT = char> constexpr auto hexdec_uppercase_encode_to = encode_to<encoding::base16_uppercase, CharT>;
+template <typename CharT = char> constexpr auto base16_encode_to = encode_to<encoding::base16, CharT>;
+template <typename CharT = char> constexpr auto base32_encode_to = encode_to<encoding::base32, CharT>;
+template <typename CharT = char> constexpr auto base32_no_padding_encode_to = encode_to<encoding::base32_no_padding, CharT>;
+template <typename CharT = char> constexpr auto z_base32_encode_to = encode_to<encoding::z_base32, CharT>;
+template <typename CharT = char> constexpr auto base64_encode_to = encode_to<encoding::base64, CharT>;
+template <typename CharT = char> constexpr auto base64url_encode_to = encode_to<encoding::base64url, CharT>;
+template <typename CharT = char> constexpr auto base64_no_padding_encode_to = encode_to<encoding::base64_no_padding, CharT>;
 
-constexpr auto binary_decode = decode_from<encoding::base2, char>;
-constexpr auto base2_decode = decode_from<encoding::base2, char>;
-constexpr auto base4_decode = decode_from<encoding::base4, char>;
-constexpr auto base8_decode = decode_from<encoding::base8, char>;
-constexpr auto hexdec_decode = decode_from<encoding::base16, char>;
-constexpr auto base16_decode = decode_from<encoding::base16, char>;
-constexpr auto base32_decode = decode_from<encoding::base32, char>;
-constexpr auto z_base32_decode = decode_from<encoding::z_base32, char>;
-constexpr auto base64_decode = decode_from<encoding::base64, char>;
-constexpr auto base64url_decode = decode_from<encoding::base64url, char>;
-constexpr auto base64_no_padding_decode = decode_from<encoding::base64_no_padding, char>;
+constexpr auto binary_encode = binary_encode_to<char>;
+constexpr auto base2_encode = base2_encode_to<char>;
+constexpr auto base4_encode = base4_encode_to<char>;
+constexpr auto base8_encode = base8_encode_to<char>;
+constexpr auto octal_encode = octal_encode_to<char>;
+constexpr auto hexdec_encode = hexdec_encode_to<char>;
+constexpr auto hexdec_uppercase_encode = hexdec_uppercase_encode_to<char>;
+constexpr auto base16_encode = base16_encode_to<char>;
+constexpr auto base32_encode = base32_encode_to<char>;
+constexpr auto base32_no_padding_encode = base32_no_padding_encode_to<char>;
+constexpr auto z_base32_encode = z_base32_encode_to<char>;
+constexpr auto base64_encode = base64_encode_to<char>;
+constexpr auto base64url_encode = base64url_encode_to<char>;
+constexpr auto base64_no_padding_encode = base64_no_padding_encode_to<char>;
+
+// decoding
+constexpr auto binary_decode = decode_from<encoding::base2>;
+constexpr auto base2_decode = decode_from<encoding::base2>;
+constexpr auto base4_decode = decode_from<encoding::base4>;
+constexpr auto base8_decode = decode_from<encoding::base8>;
+constexpr auto hexdec_decode = decode_from<encoding::base16>;
+constexpr auto base16_decode = decode_from<encoding::base16>;
+constexpr auto base32_decode = decode_from<encoding::base32>;
+constexpr auto z_base32_decode = decode_from<encoding::z_base32>;
+constexpr auto base64_decode = decode_from<encoding::base64>;
+constexpr auto base64url_decode = decode_from<encoding::base64url>;
+constexpr auto base64_no_padding_decode = decode_from<encoding::base64_no_padding>;
 
 } // namespace cthash
 
@@ -5543,6 +5809,8 @@ template <typename T, typename... Types> concept one_of = (std::same_as<T, Types
 
 template <typename T> concept byte = one_of<std::remove_cvref_t<T>, char, unsigned char, signed char, uint8_t, int8_t, std::byte>;
 
+template <typename T> concept character = one_of<std::remove_cvref_t<T>, char, unsigned char, signed char, char8_t, char16_t, char32_t, wchar_t>;
+
 template <typename Encoding> concept padded_encoding = requires() {
 	{ Encoding::padding } -> cthash::byte;
 };
@@ -5591,6 +5859,7 @@ namespace encoding {
 		static constexpr std::string_view name = "base32";
 
 		static constexpr char alphabet[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+		static constexpr char alt_alphabet[] = "abcdefghijklmnopqrstuvwxyz234567";
 		static constexpr char padding = '=';
 	};
 
@@ -5598,6 +5867,7 @@ namespace encoding {
 		static constexpr std::string_view name = "base32_no_padding";
 
 		static constexpr char alphabet[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+		static constexpr char alt_alphabet[] = "abcdefghijklmnopqrstuvwxyz234567";
 	};
 
 	struct z_base32 {
@@ -5605,6 +5875,7 @@ namespace encoding {
 		static constexpr std::string_view alt_name = "zbase32";
 
 		static constexpr char alphabet[] = "ybndrfg8ejkmcpqxot1uwisza345h769";
+		static constexpr char alt_alphabet[] = "YBNDRFG8EJKMCPQXOT1UWISZA345H769";
 	};
 
 	struct base16 {
@@ -5612,6 +5883,7 @@ namespace encoding {
 		static constexpr std::string_view alt_name = "hexdec";
 
 		static constexpr char alphabet[] = "0123456789abcdef";
+		static constexpr char alt_alphabet[] = "0123456789ABCDEF";
 	};
 
 	using hexdec = base16;
@@ -5621,6 +5893,7 @@ namespace encoding {
 		static constexpr std::string_view alt_name = "HEXDEC";
 
 		static constexpr char alphabet[] = "0123456789ABCDEF";
+		static constexpr char alt_alphabet[] = "0123456789abcdef";
 	};
 
 	using hexdec_uppercase = base16_uppercase;
@@ -5653,6 +5926,35 @@ namespace encoding {
 	using known_encodings = list<base64, base64_no_padding, base64url, base32, base32_no_padding, z_base32, base16, base16_uppercase, base8, base4, base2>;
 
 } // namespace encoding
+
+struct translation_table {
+	static constexpr size_t table_size = 256;
+	uint8_t data[table_size];
+	consteval translation_table() {
+		for (size_t i = 0; i != table_size; ++i) {
+			data[i] = 255u;
+		}
+	}
+	consteval bool insert_alphabet(std::string_view input) {
+		const size_t length = input.size();
+		for (size_t i = 0; i != length; ++i) {
+			const size_t c = static_cast<size_t>(static_cast<unsigned char>(input[i]));
+			data[c] = static_cast<uint8_t>(i);
+		}
+		return true;
+	}
+};
+
+template <typename Encoding> struct decoding_alphabet {
+	static constexpr auto table = [] {
+		translation_table output{};
+		output.insert_alphabet(Encoding::alphabet);
+		if constexpr (requires { Encoding::alt_alphabet; }) {
+			output.insert_alphabet(Encoding::alt_alphabet);
+		}
+		return output;
+	}();
+};
 
 template <typename Defs> struct dynamic_encodings;
 
@@ -5696,7 +5998,11 @@ template <typename... List> struct dynamic_encodings<encoding::list<List...>>: s
 		const auto success = (unsigned(assign_encoding<List>(name, output)) | ... | 0u);
 
 		if (!success) {
+#if __has_feature(cxx_exceptions)
 			throw std::invalid_argument{"unknown encoding name"};
+#else
+			std::abort();
+#endif
 		}
 
 		assert(output.has_value());
@@ -6880,6 +7186,8 @@ template <typename T, typename... Types> concept one_of = (std::same_as<T, Types
 
 template <typename T> concept byte = one_of<std::remove_cvref_t<T>, char, unsigned char, signed char, uint8_t, int8_t, std::byte>;
 
+template <typename T> concept character = one_of<std::remove_cvref_t<T>, char, unsigned char, signed char, char8_t, char16_t, char32_t, wchar_t>;
+
 template <typename Encoding> concept padded_encoding = requires() {
 	{ Encoding::padding } -> cthash::byte;
 };
@@ -7360,6 +7668,8 @@ template <typename T, typename... Types> concept one_of = (std::same_as<T, Types
 
 template <typename T> concept byte = one_of<std::remove_cvref_t<T>, char, unsigned char, signed char, uint8_t, int8_t, std::byte>;
 
+template <typename T> concept character = one_of<std::remove_cvref_t<T>, char, unsigned char, signed char, char8_t, char16_t, char32_t, wchar_t>;
+
 template <typename Encoding> concept padded_encoding = requires() {
 	{ Encoding::padding } -> cthash::byte;
 };
@@ -7408,6 +7718,7 @@ namespace encoding {
 		static constexpr std::string_view name = "base32";
 
 		static constexpr char alphabet[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+		static constexpr char alt_alphabet[] = "abcdefghijklmnopqrstuvwxyz234567";
 		static constexpr char padding = '=';
 	};
 
@@ -7415,6 +7726,7 @@ namespace encoding {
 		static constexpr std::string_view name = "base32_no_padding";
 
 		static constexpr char alphabet[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+		static constexpr char alt_alphabet[] = "abcdefghijklmnopqrstuvwxyz234567";
 	};
 
 	struct z_base32 {
@@ -7422,6 +7734,7 @@ namespace encoding {
 		static constexpr std::string_view alt_name = "zbase32";
 
 		static constexpr char alphabet[] = "ybndrfg8ejkmcpqxot1uwisza345h769";
+		static constexpr char alt_alphabet[] = "YBNDRFG8EJKMCPQXOT1UWISZA345H769";
 	};
 
 	struct base16 {
@@ -7429,6 +7742,7 @@ namespace encoding {
 		static constexpr std::string_view alt_name = "hexdec";
 
 		static constexpr char alphabet[] = "0123456789abcdef";
+		static constexpr char alt_alphabet[] = "0123456789ABCDEF";
 	};
 
 	using hexdec = base16;
@@ -7438,6 +7752,7 @@ namespace encoding {
 		static constexpr std::string_view alt_name = "HEXDEC";
 
 		static constexpr char alphabet[] = "0123456789ABCDEF";
+		static constexpr char alt_alphabet[] = "0123456789abcdef";
 	};
 
 	using hexdec_uppercase = base16_uppercase;
@@ -7470,6 +7785,35 @@ namespace encoding {
 	using known_encodings = list<base64, base64_no_padding, base64url, base32, base32_no_padding, z_base32, base16, base16_uppercase, base8, base4, base2>;
 
 } // namespace encoding
+
+struct translation_table {
+	static constexpr size_t table_size = 256;
+	uint8_t data[table_size];
+	consteval translation_table() {
+		for (size_t i = 0; i != table_size; ++i) {
+			data[i] = 255u;
+		}
+	}
+	consteval bool insert_alphabet(std::string_view input) {
+		const size_t length = input.size();
+		for (size_t i = 0; i != length; ++i) {
+			const size_t c = static_cast<size_t>(static_cast<unsigned char>(input[i]));
+			data[c] = static_cast<uint8_t>(i);
+		}
+		return true;
+	}
+};
+
+template <typename Encoding> struct decoding_alphabet {
+	static constexpr auto table = [] {
+		translation_table output{};
+		output.insert_alphabet(Encoding::alphabet);
+		if constexpr (requires { Encoding::alt_alphabet; }) {
+			output.insert_alphabet(Encoding::alt_alphabet);
+		}
+		return output;
+	}();
+};
 
 template <typename Defs> struct dynamic_encodings;
 
@@ -7513,7 +7857,11 @@ template <typename... List> struct dynamic_encodings<encoding::list<List...>>: s
 		const auto success = (unsigned(assign_encoding<List>(name, output)) | ... | 0u);
 
 		if (!success) {
+#if __has_feature(cxx_exceptions)
 			throw std::invalid_argument{"unknown encoding name"};
+#else
+			std::abort();
+#endif
 		}
 
 		assert(output.has_value());
@@ -7684,7 +8032,10 @@ template <typename Encoding, typename CharT, typename R> struct encode_to_view {
 	}
 };
 
-template <typename Encoding, typename ValueT, typename R> struct decode_from_view {
+template <typename Encoding, typename R> struct decode_from_view {
+	using table = decoding_alphabet<Encoding>;
+	using input_value_type = std::ranges::range_value_t<R>;
+
 	R input;
 
 	template <bool Const> struct iterator { };
@@ -7718,44 +8069,61 @@ template <typename Encoding, typename CharT = char> struct encode_to_action {
 	}
 };
 
-template <typename Encoding, typename ValueT = unsigned char> struct decode_from_action {
-	template <std::ranges::input_range R> constexpr friend auto operator|(R && input, decode_from_action action) {
+template <typename Encoding> struct decode_from_action {
+	template <std::ranges::input_range R> constexpr friend auto operator|(R && input, decode_from_action action) requires(character<std::ranges::range_value_t<R>>) {
 		return action.operator()<R>(std::forward<R>(input));
 	}
-	template <std::ranges::input_range R> constexpr auto operator()(R && input) const {
-		return decode_from_view<Encoding, ValueT, R>(std::forward<R>(input));
+	template <std::ranges::input_range R> constexpr auto operator()(R && input) const requires(character<std::ranges::range_value_t<R>>) {
+		return decode_from_view<Encoding, R>(std::forward<R>(input));
 	}
 };
 
 template <typename Encoding, typename CharT = char> constexpr auto encode_to = encode_to_action<Encoding, CharT>{};
-template <typename Encoding, typename ValueT = unsigned char> constexpr auto decode_from = decode_from_action<Encoding, ValueT>{};
+template <typename Encoding> constexpr auto decode_from = decode_from_action<Encoding>{};
 
-constexpr auto binary_encode = encode_to<encoding::base2, char>;
-constexpr auto base2_encode = encode_to<encoding::base2, char>;
-constexpr auto base4_encode = encode_to<encoding::base4, char>;
-constexpr auto base8_encode = encode_to<encoding::base8, char>;
-constexpr auto octal_encode = encode_to<encoding::base8, char>;
-constexpr auto hexdec_encode = encode_to<encoding::base16, char>;
-constexpr auto hexdec_uppercase_encode = encode_to<encoding::base16_uppercase, char>;
-constexpr auto base16_encode = encode_to<encoding::base16, char>;
-constexpr auto base32_encode = encode_to<encoding::base32, char>;
-constexpr auto base32_no_padding_encode = encode_to<encoding::base32_no_padding, char>;
-constexpr auto z_base32_encode = encode_to<encoding::z_base32, char>;
-constexpr auto base64_encode = encode_to<encoding::base64, char>;
-constexpr auto base64url_encode = encode_to<encoding::base64url, char>;
-constexpr auto base64_no_padding_encode = encode_to<encoding::base64_no_padding, char>;
+// encoding interface
+template <typename CharT = char> constexpr auto binary_encode_to = encode_to<encoding::base2, CharT>;
+template <typename CharT = char> constexpr auto base2_encode_to = encode_to<encoding::base2, CharT>;
+template <typename CharT = char> constexpr auto base4_encode_to = encode_to<encoding::base4, CharT>;
+template <typename CharT = char> constexpr auto base8_encode_to = encode_to<encoding::base8, CharT>;
+template <typename CharT = char> constexpr auto octal_encode_to = encode_to<encoding::base8, CharT>;
+template <typename CharT = char> constexpr auto hexdec_encode_to = encode_to<encoding::base16, CharT>;
+template <typename CharT = char> constexpr auto hexdec_uppercase_encode_to = encode_to<encoding::base16_uppercase, CharT>;
+template <typename CharT = char> constexpr auto base16_encode_to = encode_to<encoding::base16, CharT>;
+template <typename CharT = char> constexpr auto base32_encode_to = encode_to<encoding::base32, CharT>;
+template <typename CharT = char> constexpr auto base32_no_padding_encode_to = encode_to<encoding::base32_no_padding, CharT>;
+template <typename CharT = char> constexpr auto z_base32_encode_to = encode_to<encoding::z_base32, CharT>;
+template <typename CharT = char> constexpr auto base64_encode_to = encode_to<encoding::base64, CharT>;
+template <typename CharT = char> constexpr auto base64url_encode_to = encode_to<encoding::base64url, CharT>;
+template <typename CharT = char> constexpr auto base64_no_padding_encode_to = encode_to<encoding::base64_no_padding, CharT>;
 
-constexpr auto binary_decode = decode_from<encoding::base2, char>;
-constexpr auto base2_decode = decode_from<encoding::base2, char>;
-constexpr auto base4_decode = decode_from<encoding::base4, char>;
-constexpr auto base8_decode = decode_from<encoding::base8, char>;
-constexpr auto hexdec_decode = decode_from<encoding::base16, char>;
-constexpr auto base16_decode = decode_from<encoding::base16, char>;
-constexpr auto base32_decode = decode_from<encoding::base32, char>;
-constexpr auto z_base32_decode = decode_from<encoding::z_base32, char>;
-constexpr auto base64_decode = decode_from<encoding::base64, char>;
-constexpr auto base64url_decode = decode_from<encoding::base64url, char>;
-constexpr auto base64_no_padding_decode = decode_from<encoding::base64_no_padding, char>;
+constexpr auto binary_encode = binary_encode_to<char>;
+constexpr auto base2_encode = base2_encode_to<char>;
+constexpr auto base4_encode = base4_encode_to<char>;
+constexpr auto base8_encode = base8_encode_to<char>;
+constexpr auto octal_encode = octal_encode_to<char>;
+constexpr auto hexdec_encode = hexdec_encode_to<char>;
+constexpr auto hexdec_uppercase_encode = hexdec_uppercase_encode_to<char>;
+constexpr auto base16_encode = base16_encode_to<char>;
+constexpr auto base32_encode = base32_encode_to<char>;
+constexpr auto base32_no_padding_encode = base32_no_padding_encode_to<char>;
+constexpr auto z_base32_encode = z_base32_encode_to<char>;
+constexpr auto base64_encode = base64_encode_to<char>;
+constexpr auto base64url_encode = base64url_encode_to<char>;
+constexpr auto base64_no_padding_encode = base64_no_padding_encode_to<char>;
+
+// decoding
+constexpr auto binary_decode = decode_from<encoding::base2>;
+constexpr auto base2_decode = decode_from<encoding::base2>;
+constexpr auto base4_decode = decode_from<encoding::base4>;
+constexpr auto base8_decode = decode_from<encoding::base8>;
+constexpr auto hexdec_decode = decode_from<encoding::base16>;
+constexpr auto base16_decode = decode_from<encoding::base16>;
+constexpr auto base32_decode = decode_from<encoding::base32>;
+constexpr auto z_base32_decode = decode_from<encoding::z_base32>;
+constexpr auto base64_decode = decode_from<encoding::base64>;
+constexpr auto base64url_decode = decode_from<encoding::base64url>;
+constexpr auto base64_no_padding_decode = decode_from<encoding::base64_no_padding>;
 
 } // namespace cthash
 
@@ -7806,6 +8174,8 @@ template <typename T, typename... Types> concept one_of = (std::same_as<T, Types
 
 template <typename T> concept byte = one_of<std::remove_cvref_t<T>, char, unsigned char, signed char, uint8_t, int8_t, std::byte>;
 
+template <typename T> concept character = one_of<std::remove_cvref_t<T>, char, unsigned char, signed char, char8_t, char16_t, char32_t, wchar_t>;
+
 template <typename Encoding> concept padded_encoding = requires() {
 	{ Encoding::padding } -> cthash::byte;
 };
@@ -7854,6 +8224,7 @@ namespace encoding {
 		static constexpr std::string_view name = "base32";
 
 		static constexpr char alphabet[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+		static constexpr char alt_alphabet[] = "abcdefghijklmnopqrstuvwxyz234567";
 		static constexpr char padding = '=';
 	};
 
@@ -7861,6 +8232,7 @@ namespace encoding {
 		static constexpr std::string_view name = "base32_no_padding";
 
 		static constexpr char alphabet[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+		static constexpr char alt_alphabet[] = "abcdefghijklmnopqrstuvwxyz234567";
 	};
 
 	struct z_base32 {
@@ -7868,6 +8240,7 @@ namespace encoding {
 		static constexpr std::string_view alt_name = "zbase32";
 
 		static constexpr char alphabet[] = "ybndrfg8ejkmcpqxot1uwisza345h769";
+		static constexpr char alt_alphabet[] = "YBNDRFG8EJKMCPQXOT1UWISZA345H769";
 	};
 
 	struct base16 {
@@ -7875,6 +8248,7 @@ namespace encoding {
 		static constexpr std::string_view alt_name = "hexdec";
 
 		static constexpr char alphabet[] = "0123456789abcdef";
+		static constexpr char alt_alphabet[] = "0123456789ABCDEF";
 	};
 
 	using hexdec = base16;
@@ -7884,6 +8258,7 @@ namespace encoding {
 		static constexpr std::string_view alt_name = "HEXDEC";
 
 		static constexpr char alphabet[] = "0123456789ABCDEF";
+		static constexpr char alt_alphabet[] = "0123456789abcdef";
 	};
 
 	using hexdec_uppercase = base16_uppercase;
@@ -7916,6 +8291,35 @@ namespace encoding {
 	using known_encodings = list<base64, base64_no_padding, base64url, base32, base32_no_padding, z_base32, base16, base16_uppercase, base8, base4, base2>;
 
 } // namespace encoding
+
+struct translation_table {
+	static constexpr size_t table_size = 256;
+	uint8_t data[table_size];
+	consteval translation_table() {
+		for (size_t i = 0; i != table_size; ++i) {
+			data[i] = 255u;
+		}
+	}
+	consteval bool insert_alphabet(std::string_view input) {
+		const size_t length = input.size();
+		for (size_t i = 0; i != length; ++i) {
+			const size_t c = static_cast<size_t>(static_cast<unsigned char>(input[i]));
+			data[c] = static_cast<uint8_t>(i);
+		}
+		return true;
+	}
+};
+
+template <typename Encoding> struct decoding_alphabet {
+	static constexpr auto table = [] {
+		translation_table output{};
+		output.insert_alphabet(Encoding::alphabet);
+		if constexpr (requires { Encoding::alt_alphabet; }) {
+			output.insert_alphabet(Encoding::alt_alphabet);
+		}
+		return output;
+	}();
+};
 
 template <typename Defs> struct dynamic_encodings;
 
@@ -7959,7 +8363,11 @@ template <typename... List> struct dynamic_encodings<encoding::list<List...>>: s
 		const auto success = (unsigned(assign_encoding<List>(name, output)) | ... | 0u);
 
 		if (!success) {
+#if __has_feature(cxx_exceptions)
 			throw std::invalid_argument{"unknown encoding name"};
+#else
+			std::abort();
+#endif
 		}
 
 		assert(output.has_value());
@@ -9119,6 +9527,8 @@ template <typename T, typename... Types> concept one_of = (std::same_as<T, Types
 
 template <typename T> concept byte = one_of<std::remove_cvref_t<T>, char, unsigned char, signed char, uint8_t, int8_t, std::byte>;
 
+template <typename T> concept character = one_of<std::remove_cvref_t<T>, char, unsigned char, signed char, char8_t, char16_t, char32_t, wchar_t>;
+
 template <typename Encoding> concept padded_encoding = requires() {
 	{ Encoding::padding } -> cthash::byte;
 };
@@ -9599,6 +10009,8 @@ template <typename T, typename... Types> concept one_of = (std::same_as<T, Types
 
 template <typename T> concept byte = one_of<std::remove_cvref_t<T>, char, unsigned char, signed char, uint8_t, int8_t, std::byte>;
 
+template <typename T> concept character = one_of<std::remove_cvref_t<T>, char, unsigned char, signed char, char8_t, char16_t, char32_t, wchar_t>;
+
 template <typename Encoding> concept padded_encoding = requires() {
 	{ Encoding::padding } -> cthash::byte;
 };
@@ -9647,6 +10059,7 @@ namespace encoding {
 		static constexpr std::string_view name = "base32";
 
 		static constexpr char alphabet[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+		static constexpr char alt_alphabet[] = "abcdefghijklmnopqrstuvwxyz234567";
 		static constexpr char padding = '=';
 	};
 
@@ -9654,6 +10067,7 @@ namespace encoding {
 		static constexpr std::string_view name = "base32_no_padding";
 
 		static constexpr char alphabet[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+		static constexpr char alt_alphabet[] = "abcdefghijklmnopqrstuvwxyz234567";
 	};
 
 	struct z_base32 {
@@ -9661,6 +10075,7 @@ namespace encoding {
 		static constexpr std::string_view alt_name = "zbase32";
 
 		static constexpr char alphabet[] = "ybndrfg8ejkmcpqxot1uwisza345h769";
+		static constexpr char alt_alphabet[] = "YBNDRFG8EJKMCPQXOT1UWISZA345H769";
 	};
 
 	struct base16 {
@@ -9668,6 +10083,7 @@ namespace encoding {
 		static constexpr std::string_view alt_name = "hexdec";
 
 		static constexpr char alphabet[] = "0123456789abcdef";
+		static constexpr char alt_alphabet[] = "0123456789ABCDEF";
 	};
 
 	using hexdec = base16;
@@ -9677,6 +10093,7 @@ namespace encoding {
 		static constexpr std::string_view alt_name = "HEXDEC";
 
 		static constexpr char alphabet[] = "0123456789ABCDEF";
+		static constexpr char alt_alphabet[] = "0123456789abcdef";
 	};
 
 	using hexdec_uppercase = base16_uppercase;
@@ -9709,6 +10126,35 @@ namespace encoding {
 	using known_encodings = list<base64, base64_no_padding, base64url, base32, base32_no_padding, z_base32, base16, base16_uppercase, base8, base4, base2>;
 
 } // namespace encoding
+
+struct translation_table {
+	static constexpr size_t table_size = 256;
+	uint8_t data[table_size];
+	consteval translation_table() {
+		for (size_t i = 0; i != table_size; ++i) {
+			data[i] = 255u;
+		}
+	}
+	consteval bool insert_alphabet(std::string_view input) {
+		const size_t length = input.size();
+		for (size_t i = 0; i != length; ++i) {
+			const size_t c = static_cast<size_t>(static_cast<unsigned char>(input[i]));
+			data[c] = static_cast<uint8_t>(i);
+		}
+		return true;
+	}
+};
+
+template <typename Encoding> struct decoding_alphabet {
+	static constexpr auto table = [] {
+		translation_table output{};
+		output.insert_alphabet(Encoding::alphabet);
+		if constexpr (requires { Encoding::alt_alphabet; }) {
+			output.insert_alphabet(Encoding::alt_alphabet);
+		}
+		return output;
+	}();
+};
 
 template <typename Defs> struct dynamic_encodings;
 
@@ -9752,7 +10198,11 @@ template <typename... List> struct dynamic_encodings<encoding::list<List...>>: s
 		const auto success = (unsigned(assign_encoding<List>(name, output)) | ... | 0u);
 
 		if (!success) {
+#if __has_feature(cxx_exceptions)
 			throw std::invalid_argument{"unknown encoding name"};
+#else
+			std::abort();
+#endif
 		}
 
 		assert(output.has_value());
@@ -9923,7 +10373,10 @@ template <typename Encoding, typename CharT, typename R> struct encode_to_view {
 	}
 };
 
-template <typename Encoding, typename ValueT, typename R> struct decode_from_view {
+template <typename Encoding, typename R> struct decode_from_view {
+	using table = decoding_alphabet<Encoding>;
+	using input_value_type = std::ranges::range_value_t<R>;
+
 	R input;
 
 	template <bool Const> struct iterator { };
@@ -9957,44 +10410,61 @@ template <typename Encoding, typename CharT = char> struct encode_to_action {
 	}
 };
 
-template <typename Encoding, typename ValueT = unsigned char> struct decode_from_action {
-	template <std::ranges::input_range R> constexpr friend auto operator|(R && input, decode_from_action action) {
+template <typename Encoding> struct decode_from_action {
+	template <std::ranges::input_range R> constexpr friend auto operator|(R && input, decode_from_action action) requires(character<std::ranges::range_value_t<R>>) {
 		return action.operator()<R>(std::forward<R>(input));
 	}
-	template <std::ranges::input_range R> constexpr auto operator()(R && input) const {
-		return decode_from_view<Encoding, ValueT, R>(std::forward<R>(input));
+	template <std::ranges::input_range R> constexpr auto operator()(R && input) const requires(character<std::ranges::range_value_t<R>>) {
+		return decode_from_view<Encoding, R>(std::forward<R>(input));
 	}
 };
 
 template <typename Encoding, typename CharT = char> constexpr auto encode_to = encode_to_action<Encoding, CharT>{};
-template <typename Encoding, typename ValueT = unsigned char> constexpr auto decode_from = decode_from_action<Encoding, ValueT>{};
+template <typename Encoding> constexpr auto decode_from = decode_from_action<Encoding>{};
 
-constexpr auto binary_encode = encode_to<encoding::base2, char>;
-constexpr auto base2_encode = encode_to<encoding::base2, char>;
-constexpr auto base4_encode = encode_to<encoding::base4, char>;
-constexpr auto base8_encode = encode_to<encoding::base8, char>;
-constexpr auto octal_encode = encode_to<encoding::base8, char>;
-constexpr auto hexdec_encode = encode_to<encoding::base16, char>;
-constexpr auto hexdec_uppercase_encode = encode_to<encoding::base16_uppercase, char>;
-constexpr auto base16_encode = encode_to<encoding::base16, char>;
-constexpr auto base32_encode = encode_to<encoding::base32, char>;
-constexpr auto base32_no_padding_encode = encode_to<encoding::base32_no_padding, char>;
-constexpr auto z_base32_encode = encode_to<encoding::z_base32, char>;
-constexpr auto base64_encode = encode_to<encoding::base64, char>;
-constexpr auto base64url_encode = encode_to<encoding::base64url, char>;
-constexpr auto base64_no_padding_encode = encode_to<encoding::base64_no_padding, char>;
+// encoding interface
+template <typename CharT = char> constexpr auto binary_encode_to = encode_to<encoding::base2, CharT>;
+template <typename CharT = char> constexpr auto base2_encode_to = encode_to<encoding::base2, CharT>;
+template <typename CharT = char> constexpr auto base4_encode_to = encode_to<encoding::base4, CharT>;
+template <typename CharT = char> constexpr auto base8_encode_to = encode_to<encoding::base8, CharT>;
+template <typename CharT = char> constexpr auto octal_encode_to = encode_to<encoding::base8, CharT>;
+template <typename CharT = char> constexpr auto hexdec_encode_to = encode_to<encoding::base16, CharT>;
+template <typename CharT = char> constexpr auto hexdec_uppercase_encode_to = encode_to<encoding::base16_uppercase, CharT>;
+template <typename CharT = char> constexpr auto base16_encode_to = encode_to<encoding::base16, CharT>;
+template <typename CharT = char> constexpr auto base32_encode_to = encode_to<encoding::base32, CharT>;
+template <typename CharT = char> constexpr auto base32_no_padding_encode_to = encode_to<encoding::base32_no_padding, CharT>;
+template <typename CharT = char> constexpr auto z_base32_encode_to = encode_to<encoding::z_base32, CharT>;
+template <typename CharT = char> constexpr auto base64_encode_to = encode_to<encoding::base64, CharT>;
+template <typename CharT = char> constexpr auto base64url_encode_to = encode_to<encoding::base64url, CharT>;
+template <typename CharT = char> constexpr auto base64_no_padding_encode_to = encode_to<encoding::base64_no_padding, CharT>;
 
-constexpr auto binary_decode = decode_from<encoding::base2, char>;
-constexpr auto base2_decode = decode_from<encoding::base2, char>;
-constexpr auto base4_decode = decode_from<encoding::base4, char>;
-constexpr auto base8_decode = decode_from<encoding::base8, char>;
-constexpr auto hexdec_decode = decode_from<encoding::base16, char>;
-constexpr auto base16_decode = decode_from<encoding::base16, char>;
-constexpr auto base32_decode = decode_from<encoding::base32, char>;
-constexpr auto z_base32_decode = decode_from<encoding::z_base32, char>;
-constexpr auto base64_decode = decode_from<encoding::base64, char>;
-constexpr auto base64url_decode = decode_from<encoding::base64url, char>;
-constexpr auto base64_no_padding_decode = decode_from<encoding::base64_no_padding, char>;
+constexpr auto binary_encode = binary_encode_to<char>;
+constexpr auto base2_encode = base2_encode_to<char>;
+constexpr auto base4_encode = base4_encode_to<char>;
+constexpr auto base8_encode = base8_encode_to<char>;
+constexpr auto octal_encode = octal_encode_to<char>;
+constexpr auto hexdec_encode = hexdec_encode_to<char>;
+constexpr auto hexdec_uppercase_encode = hexdec_uppercase_encode_to<char>;
+constexpr auto base16_encode = base16_encode_to<char>;
+constexpr auto base32_encode = base32_encode_to<char>;
+constexpr auto base32_no_padding_encode = base32_no_padding_encode_to<char>;
+constexpr auto z_base32_encode = z_base32_encode_to<char>;
+constexpr auto base64_encode = base64_encode_to<char>;
+constexpr auto base64url_encode = base64url_encode_to<char>;
+constexpr auto base64_no_padding_encode = base64_no_padding_encode_to<char>;
+
+// decoding
+constexpr auto binary_decode = decode_from<encoding::base2>;
+constexpr auto base2_decode = decode_from<encoding::base2>;
+constexpr auto base4_decode = decode_from<encoding::base4>;
+constexpr auto base8_decode = decode_from<encoding::base8>;
+constexpr auto hexdec_decode = decode_from<encoding::base16>;
+constexpr auto base16_decode = decode_from<encoding::base16>;
+constexpr auto base32_decode = decode_from<encoding::base32>;
+constexpr auto z_base32_decode = decode_from<encoding::z_base32>;
+constexpr auto base64_decode = decode_from<encoding::base64>;
+constexpr auto base64url_decode = decode_from<encoding::base64url>;
+constexpr auto base64_no_padding_decode = decode_from<encoding::base64_no_padding>;
 
 } // namespace cthash
 
@@ -10045,6 +10515,8 @@ template <typename T, typename... Types> concept one_of = (std::same_as<T, Types
 
 template <typename T> concept byte = one_of<std::remove_cvref_t<T>, char, unsigned char, signed char, uint8_t, int8_t, std::byte>;
 
+template <typename T> concept character = one_of<std::remove_cvref_t<T>, char, unsigned char, signed char, char8_t, char16_t, char32_t, wchar_t>;
+
 template <typename Encoding> concept padded_encoding = requires() {
 	{ Encoding::padding } -> cthash::byte;
 };
@@ -10093,6 +10565,7 @@ namespace encoding {
 		static constexpr std::string_view name = "base32";
 
 		static constexpr char alphabet[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+		static constexpr char alt_alphabet[] = "abcdefghijklmnopqrstuvwxyz234567";
 		static constexpr char padding = '=';
 	};
 
@@ -10100,6 +10573,7 @@ namespace encoding {
 		static constexpr std::string_view name = "base32_no_padding";
 
 		static constexpr char alphabet[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+		static constexpr char alt_alphabet[] = "abcdefghijklmnopqrstuvwxyz234567";
 	};
 
 	struct z_base32 {
@@ -10107,6 +10581,7 @@ namespace encoding {
 		static constexpr std::string_view alt_name = "zbase32";
 
 		static constexpr char alphabet[] = "ybndrfg8ejkmcpqxot1uwisza345h769";
+		static constexpr char alt_alphabet[] = "YBNDRFG8EJKMCPQXOT1UWISZA345H769";
 	};
 
 	struct base16 {
@@ -10114,6 +10589,7 @@ namespace encoding {
 		static constexpr std::string_view alt_name = "hexdec";
 
 		static constexpr char alphabet[] = "0123456789abcdef";
+		static constexpr char alt_alphabet[] = "0123456789ABCDEF";
 	};
 
 	using hexdec = base16;
@@ -10123,6 +10599,7 @@ namespace encoding {
 		static constexpr std::string_view alt_name = "HEXDEC";
 
 		static constexpr char alphabet[] = "0123456789ABCDEF";
+		static constexpr char alt_alphabet[] = "0123456789abcdef";
 	};
 
 	using hexdec_uppercase = base16_uppercase;
@@ -10155,6 +10632,35 @@ namespace encoding {
 	using known_encodings = list<base64, base64_no_padding, base64url, base32, base32_no_padding, z_base32, base16, base16_uppercase, base8, base4, base2>;
 
 } // namespace encoding
+
+struct translation_table {
+	static constexpr size_t table_size = 256;
+	uint8_t data[table_size];
+	consteval translation_table() {
+		for (size_t i = 0; i != table_size; ++i) {
+			data[i] = 255u;
+		}
+	}
+	consteval bool insert_alphabet(std::string_view input) {
+		const size_t length = input.size();
+		for (size_t i = 0; i != length; ++i) {
+			const size_t c = static_cast<size_t>(static_cast<unsigned char>(input[i]));
+			data[c] = static_cast<uint8_t>(i);
+		}
+		return true;
+	}
+};
+
+template <typename Encoding> struct decoding_alphabet {
+	static constexpr auto table = [] {
+		translation_table output{};
+		output.insert_alphabet(Encoding::alphabet);
+		if constexpr (requires { Encoding::alt_alphabet; }) {
+			output.insert_alphabet(Encoding::alt_alphabet);
+		}
+		return output;
+	}();
+};
 
 template <typename Defs> struct dynamic_encodings;
 
@@ -10198,7 +10704,11 @@ template <typename... List> struct dynamic_encodings<encoding::list<List...>>: s
 		const auto success = (unsigned(assign_encoding<List>(name, output)) | ... | 0u);
 
 		if (!success) {
+#if __has_feature(cxx_exceptions)
 			throw std::invalid_argument{"unknown encoding name"};
+#else
+			std::abort();
+#endif
 		}
 
 		assert(output.has_value());
@@ -11245,7 +11755,11 @@ namespace sha256t_support {
 		} else if (t < 1000u) {
 			return 3u;
 		} else {
+#if __has_feature(cxx_exceptions)
 			throw "we don't support more than three digits!";
+#else
+			std::abort();
+#endif
 		}
 	}
 
@@ -11261,7 +11775,11 @@ namespace sha256t_support {
 		} else if constexpr (Width == 3) {
 			return std::array<char, Width + 8u>{'S', 'H', 'A', '-', '5', '1', '2', '/', a, b, c};
 		} else {
+#if __has_feature(cxx_exceptions)
 			throw "we don't support greater width than 3";
+#else
+			std::abort();
+#endif
 		}
 	}
 
@@ -11533,6 +12051,8 @@ template <auto Value> constexpr auto fixed_cast = fixed<Value>{};
 template <typename T, typename... Types> concept one_of = (std::same_as<T, Types> || ...);
 
 template <typename T> concept byte = one_of<std::remove_cvref_t<T>, char, unsigned char, signed char, uint8_t, int8_t, std::byte>;
+
+template <typename T> concept character = one_of<std::remove_cvref_t<T>, char, unsigned char, signed char, char8_t, char16_t, char32_t, wchar_t>;
 
 template <typename Encoding> concept padded_encoding = requires() {
 	{ Encoding::padding } -> cthash::byte;
@@ -12014,6 +12534,8 @@ template <typename T, typename... Types> concept one_of = (std::same_as<T, Types
 
 template <typename T> concept byte = one_of<std::remove_cvref_t<T>, char, unsigned char, signed char, uint8_t, int8_t, std::byte>;
 
+template <typename T> concept character = one_of<std::remove_cvref_t<T>, char, unsigned char, signed char, char8_t, char16_t, char32_t, wchar_t>;
+
 template <typename Encoding> concept padded_encoding = requires() {
 	{ Encoding::padding } -> cthash::byte;
 };
@@ -12062,6 +12584,7 @@ namespace encoding {
 		static constexpr std::string_view name = "base32";
 
 		static constexpr char alphabet[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+		static constexpr char alt_alphabet[] = "abcdefghijklmnopqrstuvwxyz234567";
 		static constexpr char padding = '=';
 	};
 
@@ -12069,6 +12592,7 @@ namespace encoding {
 		static constexpr std::string_view name = "base32_no_padding";
 
 		static constexpr char alphabet[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+		static constexpr char alt_alphabet[] = "abcdefghijklmnopqrstuvwxyz234567";
 	};
 
 	struct z_base32 {
@@ -12076,6 +12600,7 @@ namespace encoding {
 		static constexpr std::string_view alt_name = "zbase32";
 
 		static constexpr char alphabet[] = "ybndrfg8ejkmcpqxot1uwisza345h769";
+		static constexpr char alt_alphabet[] = "YBNDRFG8EJKMCPQXOT1UWISZA345H769";
 	};
 
 	struct base16 {
@@ -12083,6 +12608,7 @@ namespace encoding {
 		static constexpr std::string_view alt_name = "hexdec";
 
 		static constexpr char alphabet[] = "0123456789abcdef";
+		static constexpr char alt_alphabet[] = "0123456789ABCDEF";
 	};
 
 	using hexdec = base16;
@@ -12092,6 +12618,7 @@ namespace encoding {
 		static constexpr std::string_view alt_name = "HEXDEC";
 
 		static constexpr char alphabet[] = "0123456789ABCDEF";
+		static constexpr char alt_alphabet[] = "0123456789abcdef";
 	};
 
 	using hexdec_uppercase = base16_uppercase;
@@ -12124,6 +12651,35 @@ namespace encoding {
 	using known_encodings = list<base64, base64_no_padding, base64url, base32, base32_no_padding, z_base32, base16, base16_uppercase, base8, base4, base2>;
 
 } // namespace encoding
+
+struct translation_table {
+	static constexpr size_t table_size = 256;
+	uint8_t data[table_size];
+	consteval translation_table() {
+		for (size_t i = 0; i != table_size; ++i) {
+			data[i] = 255u;
+		}
+	}
+	consteval bool insert_alphabet(std::string_view input) {
+		const size_t length = input.size();
+		for (size_t i = 0; i != length; ++i) {
+			const size_t c = static_cast<size_t>(static_cast<unsigned char>(input[i]));
+			data[c] = static_cast<uint8_t>(i);
+		}
+		return true;
+	}
+};
+
+template <typename Encoding> struct decoding_alphabet {
+	static constexpr auto table = [] {
+		translation_table output{};
+		output.insert_alphabet(Encoding::alphabet);
+		if constexpr (requires { Encoding::alt_alphabet; }) {
+			output.insert_alphabet(Encoding::alt_alphabet);
+		}
+		return output;
+	}();
+};
 
 template <typename Defs> struct dynamic_encodings;
 
@@ -12167,7 +12723,11 @@ template <typename... List> struct dynamic_encodings<encoding::list<List...>>: s
 		const auto success = (unsigned(assign_encoding<List>(name, output)) | ... | 0u);
 
 		if (!success) {
+#if __has_feature(cxx_exceptions)
 			throw std::invalid_argument{"unknown encoding name"};
+#else
+			std::abort();
+#endif
 		}
 
 		assert(output.has_value());
@@ -12338,7 +12898,10 @@ template <typename Encoding, typename CharT, typename R> struct encode_to_view {
 	}
 };
 
-template <typename Encoding, typename ValueT, typename R> struct decode_from_view {
+template <typename Encoding, typename R> struct decode_from_view {
+	using table = decoding_alphabet<Encoding>;
+	using input_value_type = std::ranges::range_value_t<R>;
+
 	R input;
 
 	template <bool Const> struct iterator { };
@@ -12372,44 +12935,61 @@ template <typename Encoding, typename CharT = char> struct encode_to_action {
 	}
 };
 
-template <typename Encoding, typename ValueT = unsigned char> struct decode_from_action {
-	template <std::ranges::input_range R> constexpr friend auto operator|(R && input, decode_from_action action) {
+template <typename Encoding> struct decode_from_action {
+	template <std::ranges::input_range R> constexpr friend auto operator|(R && input, decode_from_action action) requires(character<std::ranges::range_value_t<R>>) {
 		return action.operator()<R>(std::forward<R>(input));
 	}
-	template <std::ranges::input_range R> constexpr auto operator()(R && input) const {
-		return decode_from_view<Encoding, ValueT, R>(std::forward<R>(input));
+	template <std::ranges::input_range R> constexpr auto operator()(R && input) const requires(character<std::ranges::range_value_t<R>>) {
+		return decode_from_view<Encoding, R>(std::forward<R>(input));
 	}
 };
 
 template <typename Encoding, typename CharT = char> constexpr auto encode_to = encode_to_action<Encoding, CharT>{};
-template <typename Encoding, typename ValueT = unsigned char> constexpr auto decode_from = decode_from_action<Encoding, ValueT>{};
+template <typename Encoding> constexpr auto decode_from = decode_from_action<Encoding>{};
 
-constexpr auto binary_encode = encode_to<encoding::base2, char>;
-constexpr auto base2_encode = encode_to<encoding::base2, char>;
-constexpr auto base4_encode = encode_to<encoding::base4, char>;
-constexpr auto base8_encode = encode_to<encoding::base8, char>;
-constexpr auto octal_encode = encode_to<encoding::base8, char>;
-constexpr auto hexdec_encode = encode_to<encoding::base16, char>;
-constexpr auto hexdec_uppercase_encode = encode_to<encoding::base16_uppercase, char>;
-constexpr auto base16_encode = encode_to<encoding::base16, char>;
-constexpr auto base32_encode = encode_to<encoding::base32, char>;
-constexpr auto base32_no_padding_encode = encode_to<encoding::base32_no_padding, char>;
-constexpr auto z_base32_encode = encode_to<encoding::z_base32, char>;
-constexpr auto base64_encode = encode_to<encoding::base64, char>;
-constexpr auto base64url_encode = encode_to<encoding::base64url, char>;
-constexpr auto base64_no_padding_encode = encode_to<encoding::base64_no_padding, char>;
+// encoding interface
+template <typename CharT = char> constexpr auto binary_encode_to = encode_to<encoding::base2, CharT>;
+template <typename CharT = char> constexpr auto base2_encode_to = encode_to<encoding::base2, CharT>;
+template <typename CharT = char> constexpr auto base4_encode_to = encode_to<encoding::base4, CharT>;
+template <typename CharT = char> constexpr auto base8_encode_to = encode_to<encoding::base8, CharT>;
+template <typename CharT = char> constexpr auto octal_encode_to = encode_to<encoding::base8, CharT>;
+template <typename CharT = char> constexpr auto hexdec_encode_to = encode_to<encoding::base16, CharT>;
+template <typename CharT = char> constexpr auto hexdec_uppercase_encode_to = encode_to<encoding::base16_uppercase, CharT>;
+template <typename CharT = char> constexpr auto base16_encode_to = encode_to<encoding::base16, CharT>;
+template <typename CharT = char> constexpr auto base32_encode_to = encode_to<encoding::base32, CharT>;
+template <typename CharT = char> constexpr auto base32_no_padding_encode_to = encode_to<encoding::base32_no_padding, CharT>;
+template <typename CharT = char> constexpr auto z_base32_encode_to = encode_to<encoding::z_base32, CharT>;
+template <typename CharT = char> constexpr auto base64_encode_to = encode_to<encoding::base64, CharT>;
+template <typename CharT = char> constexpr auto base64url_encode_to = encode_to<encoding::base64url, CharT>;
+template <typename CharT = char> constexpr auto base64_no_padding_encode_to = encode_to<encoding::base64_no_padding, CharT>;
 
-constexpr auto binary_decode = decode_from<encoding::base2, char>;
-constexpr auto base2_decode = decode_from<encoding::base2, char>;
-constexpr auto base4_decode = decode_from<encoding::base4, char>;
-constexpr auto base8_decode = decode_from<encoding::base8, char>;
-constexpr auto hexdec_decode = decode_from<encoding::base16, char>;
-constexpr auto base16_decode = decode_from<encoding::base16, char>;
-constexpr auto base32_decode = decode_from<encoding::base32, char>;
-constexpr auto z_base32_decode = decode_from<encoding::z_base32, char>;
-constexpr auto base64_decode = decode_from<encoding::base64, char>;
-constexpr auto base64url_decode = decode_from<encoding::base64url, char>;
-constexpr auto base64_no_padding_decode = decode_from<encoding::base64_no_padding, char>;
+constexpr auto binary_encode = binary_encode_to<char>;
+constexpr auto base2_encode = base2_encode_to<char>;
+constexpr auto base4_encode = base4_encode_to<char>;
+constexpr auto base8_encode = base8_encode_to<char>;
+constexpr auto octal_encode = octal_encode_to<char>;
+constexpr auto hexdec_encode = hexdec_encode_to<char>;
+constexpr auto hexdec_uppercase_encode = hexdec_uppercase_encode_to<char>;
+constexpr auto base16_encode = base16_encode_to<char>;
+constexpr auto base32_encode = base32_encode_to<char>;
+constexpr auto base32_no_padding_encode = base32_no_padding_encode_to<char>;
+constexpr auto z_base32_encode = z_base32_encode_to<char>;
+constexpr auto base64_encode = base64_encode_to<char>;
+constexpr auto base64url_encode = base64url_encode_to<char>;
+constexpr auto base64_no_padding_encode = base64_no_padding_encode_to<char>;
+
+// decoding
+constexpr auto binary_decode = decode_from<encoding::base2>;
+constexpr auto base2_decode = decode_from<encoding::base2>;
+constexpr auto base4_decode = decode_from<encoding::base4>;
+constexpr auto base8_decode = decode_from<encoding::base8>;
+constexpr auto hexdec_decode = decode_from<encoding::base16>;
+constexpr auto base16_decode = decode_from<encoding::base16>;
+constexpr auto base32_decode = decode_from<encoding::base32>;
+constexpr auto z_base32_decode = decode_from<encoding::z_base32>;
+constexpr auto base64_decode = decode_from<encoding::base64>;
+constexpr auto base64url_decode = decode_from<encoding::base64url>;
+constexpr auto base64_no_padding_decode = decode_from<encoding::base64_no_padding>;
 
 } // namespace cthash
 
@@ -12460,6 +13040,8 @@ template <typename T, typename... Types> concept one_of = (std::same_as<T, Types
 
 template <typename T> concept byte = one_of<std::remove_cvref_t<T>, char, unsigned char, signed char, uint8_t, int8_t, std::byte>;
 
+template <typename T> concept character = one_of<std::remove_cvref_t<T>, char, unsigned char, signed char, char8_t, char16_t, char32_t, wchar_t>;
+
 template <typename Encoding> concept padded_encoding = requires() {
 	{ Encoding::padding } -> cthash::byte;
 };
@@ -12508,6 +13090,7 @@ namespace encoding {
 		static constexpr std::string_view name = "base32";
 
 		static constexpr char alphabet[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+		static constexpr char alt_alphabet[] = "abcdefghijklmnopqrstuvwxyz234567";
 		static constexpr char padding = '=';
 	};
 
@@ -12515,6 +13098,7 @@ namespace encoding {
 		static constexpr std::string_view name = "base32_no_padding";
 
 		static constexpr char alphabet[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+		static constexpr char alt_alphabet[] = "abcdefghijklmnopqrstuvwxyz234567";
 	};
 
 	struct z_base32 {
@@ -12522,6 +13106,7 @@ namespace encoding {
 		static constexpr std::string_view alt_name = "zbase32";
 
 		static constexpr char alphabet[] = "ybndrfg8ejkmcpqxot1uwisza345h769";
+		static constexpr char alt_alphabet[] = "YBNDRFG8EJKMCPQXOT1UWISZA345H769";
 	};
 
 	struct base16 {
@@ -12529,6 +13114,7 @@ namespace encoding {
 		static constexpr std::string_view alt_name = "hexdec";
 
 		static constexpr char alphabet[] = "0123456789abcdef";
+		static constexpr char alt_alphabet[] = "0123456789ABCDEF";
 	};
 
 	using hexdec = base16;
@@ -12538,6 +13124,7 @@ namespace encoding {
 		static constexpr std::string_view alt_name = "HEXDEC";
 
 		static constexpr char alphabet[] = "0123456789ABCDEF";
+		static constexpr char alt_alphabet[] = "0123456789abcdef";
 	};
 
 	using hexdec_uppercase = base16_uppercase;
@@ -12570,6 +13157,35 @@ namespace encoding {
 	using known_encodings = list<base64, base64_no_padding, base64url, base32, base32_no_padding, z_base32, base16, base16_uppercase, base8, base4, base2>;
 
 } // namespace encoding
+
+struct translation_table {
+	static constexpr size_t table_size = 256;
+	uint8_t data[table_size];
+	consteval translation_table() {
+		for (size_t i = 0; i != table_size; ++i) {
+			data[i] = 255u;
+		}
+	}
+	consteval bool insert_alphabet(std::string_view input) {
+		const size_t length = input.size();
+		for (size_t i = 0; i != length; ++i) {
+			const size_t c = static_cast<size_t>(static_cast<unsigned char>(input[i]));
+			data[c] = static_cast<uint8_t>(i);
+		}
+		return true;
+	}
+};
+
+template <typename Encoding> struct decoding_alphabet {
+	static constexpr auto table = [] {
+		translation_table output{};
+		output.insert_alphabet(Encoding::alphabet);
+		if constexpr (requires { Encoding::alt_alphabet; }) {
+			output.insert_alphabet(Encoding::alt_alphabet);
+		}
+		return output;
+	}();
+};
 
 template <typename Defs> struct dynamic_encodings;
 
@@ -12613,7 +13229,11 @@ template <typename... List> struct dynamic_encodings<encoding::list<List...>>: s
 		const auto success = (unsigned(assign_encoding<List>(name, output)) | ... | 0u);
 
 		if (!success) {
+#if __has_feature(cxx_exceptions)
 			throw std::invalid_argument{"unknown encoding name"};
+#else
+			std::abort();
+#endif
 		}
 
 		assert(output.has_value());
@@ -13819,6 +14439,8 @@ template <typename T, typename... Types> concept one_of = (std::same_as<T, Types
 
 template <typename T> concept byte = one_of<std::remove_cvref_t<T>, char, unsigned char, signed char, uint8_t, int8_t, std::byte>;
 
+template <typename T> concept character = one_of<std::remove_cvref_t<T>, char, unsigned char, signed char, char8_t, char16_t, char32_t, wchar_t>;
+
 template <typename Encoding> concept padded_encoding = requires() {
 	{ Encoding::padding } -> cthash::byte;
 };
@@ -14299,6 +14921,8 @@ template <typename T, typename... Types> concept one_of = (std::same_as<T, Types
 
 template <typename T> concept byte = one_of<std::remove_cvref_t<T>, char, unsigned char, signed char, uint8_t, int8_t, std::byte>;
 
+template <typename T> concept character = one_of<std::remove_cvref_t<T>, char, unsigned char, signed char, char8_t, char16_t, char32_t, wchar_t>;
+
 template <typename Encoding> concept padded_encoding = requires() {
 	{ Encoding::padding } -> cthash::byte;
 };
@@ -14347,6 +14971,7 @@ namespace encoding {
 		static constexpr std::string_view name = "base32";
 
 		static constexpr char alphabet[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+		static constexpr char alt_alphabet[] = "abcdefghijklmnopqrstuvwxyz234567";
 		static constexpr char padding = '=';
 	};
 
@@ -14354,6 +14979,7 @@ namespace encoding {
 		static constexpr std::string_view name = "base32_no_padding";
 
 		static constexpr char alphabet[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+		static constexpr char alt_alphabet[] = "abcdefghijklmnopqrstuvwxyz234567";
 	};
 
 	struct z_base32 {
@@ -14361,6 +14987,7 @@ namespace encoding {
 		static constexpr std::string_view alt_name = "zbase32";
 
 		static constexpr char alphabet[] = "ybndrfg8ejkmcpqxot1uwisza345h769";
+		static constexpr char alt_alphabet[] = "YBNDRFG8EJKMCPQXOT1UWISZA345H769";
 	};
 
 	struct base16 {
@@ -14368,6 +14995,7 @@ namespace encoding {
 		static constexpr std::string_view alt_name = "hexdec";
 
 		static constexpr char alphabet[] = "0123456789abcdef";
+		static constexpr char alt_alphabet[] = "0123456789ABCDEF";
 	};
 
 	using hexdec = base16;
@@ -14377,6 +15005,7 @@ namespace encoding {
 		static constexpr std::string_view alt_name = "HEXDEC";
 
 		static constexpr char alphabet[] = "0123456789ABCDEF";
+		static constexpr char alt_alphabet[] = "0123456789abcdef";
 	};
 
 	using hexdec_uppercase = base16_uppercase;
@@ -14409,6 +15038,35 @@ namespace encoding {
 	using known_encodings = list<base64, base64_no_padding, base64url, base32, base32_no_padding, z_base32, base16, base16_uppercase, base8, base4, base2>;
 
 } // namespace encoding
+
+struct translation_table {
+	static constexpr size_t table_size = 256;
+	uint8_t data[table_size];
+	consteval translation_table() {
+		for (size_t i = 0; i != table_size; ++i) {
+			data[i] = 255u;
+		}
+	}
+	consteval bool insert_alphabet(std::string_view input) {
+		const size_t length = input.size();
+		for (size_t i = 0; i != length; ++i) {
+			const size_t c = static_cast<size_t>(static_cast<unsigned char>(input[i]));
+			data[c] = static_cast<uint8_t>(i);
+		}
+		return true;
+	}
+};
+
+template <typename Encoding> struct decoding_alphabet {
+	static constexpr auto table = [] {
+		translation_table output{};
+		output.insert_alphabet(Encoding::alphabet);
+		if constexpr (requires { Encoding::alt_alphabet; }) {
+			output.insert_alphabet(Encoding::alt_alphabet);
+		}
+		return output;
+	}();
+};
 
 template <typename Defs> struct dynamic_encodings;
 
@@ -14452,7 +15110,11 @@ template <typename... List> struct dynamic_encodings<encoding::list<List...>>: s
 		const auto success = (unsigned(assign_encoding<List>(name, output)) | ... | 0u);
 
 		if (!success) {
+#if __has_feature(cxx_exceptions)
 			throw std::invalid_argument{"unknown encoding name"};
+#else
+			std::abort();
+#endif
 		}
 
 		assert(output.has_value());
@@ -14623,7 +15285,10 @@ template <typename Encoding, typename CharT, typename R> struct encode_to_view {
 	}
 };
 
-template <typename Encoding, typename ValueT, typename R> struct decode_from_view {
+template <typename Encoding, typename R> struct decode_from_view {
+	using table = decoding_alphabet<Encoding>;
+	using input_value_type = std::ranges::range_value_t<R>;
+
 	R input;
 
 	template <bool Const> struct iterator { };
@@ -14657,44 +15322,61 @@ template <typename Encoding, typename CharT = char> struct encode_to_action {
 	}
 };
 
-template <typename Encoding, typename ValueT = unsigned char> struct decode_from_action {
-	template <std::ranges::input_range R> constexpr friend auto operator|(R && input, decode_from_action action) {
+template <typename Encoding> struct decode_from_action {
+	template <std::ranges::input_range R> constexpr friend auto operator|(R && input, decode_from_action action) requires(character<std::ranges::range_value_t<R>>) {
 		return action.operator()<R>(std::forward<R>(input));
 	}
-	template <std::ranges::input_range R> constexpr auto operator()(R && input) const {
-		return decode_from_view<Encoding, ValueT, R>(std::forward<R>(input));
+	template <std::ranges::input_range R> constexpr auto operator()(R && input) const requires(character<std::ranges::range_value_t<R>>) {
+		return decode_from_view<Encoding, R>(std::forward<R>(input));
 	}
 };
 
 template <typename Encoding, typename CharT = char> constexpr auto encode_to = encode_to_action<Encoding, CharT>{};
-template <typename Encoding, typename ValueT = unsigned char> constexpr auto decode_from = decode_from_action<Encoding, ValueT>{};
+template <typename Encoding> constexpr auto decode_from = decode_from_action<Encoding>{};
 
-constexpr auto binary_encode = encode_to<encoding::base2, char>;
-constexpr auto base2_encode = encode_to<encoding::base2, char>;
-constexpr auto base4_encode = encode_to<encoding::base4, char>;
-constexpr auto base8_encode = encode_to<encoding::base8, char>;
-constexpr auto octal_encode = encode_to<encoding::base8, char>;
-constexpr auto hexdec_encode = encode_to<encoding::base16, char>;
-constexpr auto hexdec_uppercase_encode = encode_to<encoding::base16_uppercase, char>;
-constexpr auto base16_encode = encode_to<encoding::base16, char>;
-constexpr auto base32_encode = encode_to<encoding::base32, char>;
-constexpr auto base32_no_padding_encode = encode_to<encoding::base32_no_padding, char>;
-constexpr auto z_base32_encode = encode_to<encoding::z_base32, char>;
-constexpr auto base64_encode = encode_to<encoding::base64, char>;
-constexpr auto base64url_encode = encode_to<encoding::base64url, char>;
-constexpr auto base64_no_padding_encode = encode_to<encoding::base64_no_padding, char>;
+// encoding interface
+template <typename CharT = char> constexpr auto binary_encode_to = encode_to<encoding::base2, CharT>;
+template <typename CharT = char> constexpr auto base2_encode_to = encode_to<encoding::base2, CharT>;
+template <typename CharT = char> constexpr auto base4_encode_to = encode_to<encoding::base4, CharT>;
+template <typename CharT = char> constexpr auto base8_encode_to = encode_to<encoding::base8, CharT>;
+template <typename CharT = char> constexpr auto octal_encode_to = encode_to<encoding::base8, CharT>;
+template <typename CharT = char> constexpr auto hexdec_encode_to = encode_to<encoding::base16, CharT>;
+template <typename CharT = char> constexpr auto hexdec_uppercase_encode_to = encode_to<encoding::base16_uppercase, CharT>;
+template <typename CharT = char> constexpr auto base16_encode_to = encode_to<encoding::base16, CharT>;
+template <typename CharT = char> constexpr auto base32_encode_to = encode_to<encoding::base32, CharT>;
+template <typename CharT = char> constexpr auto base32_no_padding_encode_to = encode_to<encoding::base32_no_padding, CharT>;
+template <typename CharT = char> constexpr auto z_base32_encode_to = encode_to<encoding::z_base32, CharT>;
+template <typename CharT = char> constexpr auto base64_encode_to = encode_to<encoding::base64, CharT>;
+template <typename CharT = char> constexpr auto base64url_encode_to = encode_to<encoding::base64url, CharT>;
+template <typename CharT = char> constexpr auto base64_no_padding_encode_to = encode_to<encoding::base64_no_padding, CharT>;
 
-constexpr auto binary_decode = decode_from<encoding::base2, char>;
-constexpr auto base2_decode = decode_from<encoding::base2, char>;
-constexpr auto base4_decode = decode_from<encoding::base4, char>;
-constexpr auto base8_decode = decode_from<encoding::base8, char>;
-constexpr auto hexdec_decode = decode_from<encoding::base16, char>;
-constexpr auto base16_decode = decode_from<encoding::base16, char>;
-constexpr auto base32_decode = decode_from<encoding::base32, char>;
-constexpr auto z_base32_decode = decode_from<encoding::z_base32, char>;
-constexpr auto base64_decode = decode_from<encoding::base64, char>;
-constexpr auto base64url_decode = decode_from<encoding::base64url, char>;
-constexpr auto base64_no_padding_decode = decode_from<encoding::base64_no_padding, char>;
+constexpr auto binary_encode = binary_encode_to<char>;
+constexpr auto base2_encode = base2_encode_to<char>;
+constexpr auto base4_encode = base4_encode_to<char>;
+constexpr auto base8_encode = base8_encode_to<char>;
+constexpr auto octal_encode = octal_encode_to<char>;
+constexpr auto hexdec_encode = hexdec_encode_to<char>;
+constexpr auto hexdec_uppercase_encode = hexdec_uppercase_encode_to<char>;
+constexpr auto base16_encode = base16_encode_to<char>;
+constexpr auto base32_encode = base32_encode_to<char>;
+constexpr auto base32_no_padding_encode = base32_no_padding_encode_to<char>;
+constexpr auto z_base32_encode = z_base32_encode_to<char>;
+constexpr auto base64_encode = base64_encode_to<char>;
+constexpr auto base64url_encode = base64url_encode_to<char>;
+constexpr auto base64_no_padding_encode = base64_no_padding_encode_to<char>;
+
+// decoding
+constexpr auto binary_decode = decode_from<encoding::base2>;
+constexpr auto base2_decode = decode_from<encoding::base2>;
+constexpr auto base4_decode = decode_from<encoding::base4>;
+constexpr auto base8_decode = decode_from<encoding::base8>;
+constexpr auto hexdec_decode = decode_from<encoding::base16>;
+constexpr auto base16_decode = decode_from<encoding::base16>;
+constexpr auto base32_decode = decode_from<encoding::base32>;
+constexpr auto z_base32_decode = decode_from<encoding::z_base32>;
+constexpr auto base64_decode = decode_from<encoding::base64>;
+constexpr auto base64url_decode = decode_from<encoding::base64url>;
+constexpr auto base64_no_padding_decode = decode_from<encoding::base64_no_padding>;
 
 } // namespace cthash
 
@@ -14745,6 +15427,8 @@ template <typename T, typename... Types> concept one_of = (std::same_as<T, Types
 
 template <typename T> concept byte = one_of<std::remove_cvref_t<T>, char, unsigned char, signed char, uint8_t, int8_t, std::byte>;
 
+template <typename T> concept character = one_of<std::remove_cvref_t<T>, char, unsigned char, signed char, char8_t, char16_t, char32_t, wchar_t>;
+
 template <typename Encoding> concept padded_encoding = requires() {
 	{ Encoding::padding } -> cthash::byte;
 };
@@ -14793,6 +15477,7 @@ namespace encoding {
 		static constexpr std::string_view name = "base32";
 
 		static constexpr char alphabet[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+		static constexpr char alt_alphabet[] = "abcdefghijklmnopqrstuvwxyz234567";
 		static constexpr char padding = '=';
 	};
 
@@ -14800,6 +15485,7 @@ namespace encoding {
 		static constexpr std::string_view name = "base32_no_padding";
 
 		static constexpr char alphabet[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+		static constexpr char alt_alphabet[] = "abcdefghijklmnopqrstuvwxyz234567";
 	};
 
 	struct z_base32 {
@@ -14807,6 +15493,7 @@ namespace encoding {
 		static constexpr std::string_view alt_name = "zbase32";
 
 		static constexpr char alphabet[] = "ybndrfg8ejkmcpqxot1uwisza345h769";
+		static constexpr char alt_alphabet[] = "YBNDRFG8EJKMCPQXOT1UWISZA345H769";
 	};
 
 	struct base16 {
@@ -14814,6 +15501,7 @@ namespace encoding {
 		static constexpr std::string_view alt_name = "hexdec";
 
 		static constexpr char alphabet[] = "0123456789abcdef";
+		static constexpr char alt_alphabet[] = "0123456789ABCDEF";
 	};
 
 	using hexdec = base16;
@@ -14823,6 +15511,7 @@ namespace encoding {
 		static constexpr std::string_view alt_name = "HEXDEC";
 
 		static constexpr char alphabet[] = "0123456789ABCDEF";
+		static constexpr char alt_alphabet[] = "0123456789abcdef";
 	};
 
 	using hexdec_uppercase = base16_uppercase;
@@ -14855,6 +15544,35 @@ namespace encoding {
 	using known_encodings = list<base64, base64_no_padding, base64url, base32, base32_no_padding, z_base32, base16, base16_uppercase, base8, base4, base2>;
 
 } // namespace encoding
+
+struct translation_table {
+	static constexpr size_t table_size = 256;
+	uint8_t data[table_size];
+	consteval translation_table() {
+		for (size_t i = 0; i != table_size; ++i) {
+			data[i] = 255u;
+		}
+	}
+	consteval bool insert_alphabet(std::string_view input) {
+		const size_t length = input.size();
+		for (size_t i = 0; i != length; ++i) {
+			const size_t c = static_cast<size_t>(static_cast<unsigned char>(input[i]));
+			data[c] = static_cast<uint8_t>(i);
+		}
+		return true;
+	}
+};
+
+template <typename Encoding> struct decoding_alphabet {
+	static constexpr auto table = [] {
+		translation_table output{};
+		output.insert_alphabet(Encoding::alphabet);
+		if constexpr (requires { Encoding::alt_alphabet; }) {
+			output.insert_alphabet(Encoding::alt_alphabet);
+		}
+		return output;
+	}();
+};
 
 template <typename Defs> struct dynamic_encodings;
 
@@ -14898,7 +15616,11 @@ template <typename... List> struct dynamic_encodings<encoding::list<List...>>: s
 		const auto success = (unsigned(assign_encoding<List>(name, output)) | ... | 0u);
 
 		if (!success) {
+#if __has_feature(cxx_exceptions)
 			throw std::invalid_argument{"unknown encoding name"};
+#else
+			std::abort();
+#endif
 		}
 
 		assert(output.has_value());
@@ -15869,6 +16591,8 @@ template <typename T, typename... Types> concept one_of = (std::same_as<T, Types
 
 template <typename T> concept byte = one_of<std::remove_cvref_t<T>, char, unsigned char, signed char, uint8_t, int8_t, std::byte>;
 
+template <typename T> concept character = one_of<std::remove_cvref_t<T>, char, unsigned char, signed char, char8_t, char16_t, char32_t, wchar_t>;
+
 template <typename Encoding> concept padded_encoding = requires() {
 	{ Encoding::padding } -> cthash::byte;
 };
@@ -16349,6 +17073,8 @@ template <typename T, typename... Types> concept one_of = (std::same_as<T, Types
 
 template <typename T> concept byte = one_of<std::remove_cvref_t<T>, char, unsigned char, signed char, uint8_t, int8_t, std::byte>;
 
+template <typename T> concept character = one_of<std::remove_cvref_t<T>, char, unsigned char, signed char, char8_t, char16_t, char32_t, wchar_t>;
+
 template <typename Encoding> concept padded_encoding = requires() {
 	{ Encoding::padding } -> cthash::byte;
 };
@@ -16397,6 +17123,7 @@ namespace encoding {
 		static constexpr std::string_view name = "base32";
 
 		static constexpr char alphabet[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+		static constexpr char alt_alphabet[] = "abcdefghijklmnopqrstuvwxyz234567";
 		static constexpr char padding = '=';
 	};
 
@@ -16404,6 +17131,7 @@ namespace encoding {
 		static constexpr std::string_view name = "base32_no_padding";
 
 		static constexpr char alphabet[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+		static constexpr char alt_alphabet[] = "abcdefghijklmnopqrstuvwxyz234567";
 	};
 
 	struct z_base32 {
@@ -16411,6 +17139,7 @@ namespace encoding {
 		static constexpr std::string_view alt_name = "zbase32";
 
 		static constexpr char alphabet[] = "ybndrfg8ejkmcpqxot1uwisza345h769";
+		static constexpr char alt_alphabet[] = "YBNDRFG8EJKMCPQXOT1UWISZA345H769";
 	};
 
 	struct base16 {
@@ -16418,6 +17147,7 @@ namespace encoding {
 		static constexpr std::string_view alt_name = "hexdec";
 
 		static constexpr char alphabet[] = "0123456789abcdef";
+		static constexpr char alt_alphabet[] = "0123456789ABCDEF";
 	};
 
 	using hexdec = base16;
@@ -16427,6 +17157,7 @@ namespace encoding {
 		static constexpr std::string_view alt_name = "HEXDEC";
 
 		static constexpr char alphabet[] = "0123456789ABCDEF";
+		static constexpr char alt_alphabet[] = "0123456789abcdef";
 	};
 
 	using hexdec_uppercase = base16_uppercase;
@@ -16459,6 +17190,35 @@ namespace encoding {
 	using known_encodings = list<base64, base64_no_padding, base64url, base32, base32_no_padding, z_base32, base16, base16_uppercase, base8, base4, base2>;
 
 } // namespace encoding
+
+struct translation_table {
+	static constexpr size_t table_size = 256;
+	uint8_t data[table_size];
+	consteval translation_table() {
+		for (size_t i = 0; i != table_size; ++i) {
+			data[i] = 255u;
+		}
+	}
+	consteval bool insert_alphabet(std::string_view input) {
+		const size_t length = input.size();
+		for (size_t i = 0; i != length; ++i) {
+			const size_t c = static_cast<size_t>(static_cast<unsigned char>(input[i]));
+			data[c] = static_cast<uint8_t>(i);
+		}
+		return true;
+	}
+};
+
+template <typename Encoding> struct decoding_alphabet {
+	static constexpr auto table = [] {
+		translation_table output{};
+		output.insert_alphabet(Encoding::alphabet);
+		if constexpr (requires { Encoding::alt_alphabet; }) {
+			output.insert_alphabet(Encoding::alt_alphabet);
+		}
+		return output;
+	}();
+};
 
 template <typename Defs> struct dynamic_encodings;
 
@@ -16502,7 +17262,11 @@ template <typename... List> struct dynamic_encodings<encoding::list<List...>>: s
 		const auto success = (unsigned(assign_encoding<List>(name, output)) | ... | 0u);
 
 		if (!success) {
+#if __has_feature(cxx_exceptions)
 			throw std::invalid_argument{"unknown encoding name"};
+#else
+			std::abort();
+#endif
 		}
 
 		assert(output.has_value());
@@ -16673,7 +17437,10 @@ template <typename Encoding, typename CharT, typename R> struct encode_to_view {
 	}
 };
 
-template <typename Encoding, typename ValueT, typename R> struct decode_from_view {
+template <typename Encoding, typename R> struct decode_from_view {
+	using table = decoding_alphabet<Encoding>;
+	using input_value_type = std::ranges::range_value_t<R>;
+
 	R input;
 
 	template <bool Const> struct iterator { };
@@ -16707,44 +17474,61 @@ template <typename Encoding, typename CharT = char> struct encode_to_action {
 	}
 };
 
-template <typename Encoding, typename ValueT = unsigned char> struct decode_from_action {
-	template <std::ranges::input_range R> constexpr friend auto operator|(R && input, decode_from_action action) {
+template <typename Encoding> struct decode_from_action {
+	template <std::ranges::input_range R> constexpr friend auto operator|(R && input, decode_from_action action) requires(character<std::ranges::range_value_t<R>>) {
 		return action.operator()<R>(std::forward<R>(input));
 	}
-	template <std::ranges::input_range R> constexpr auto operator()(R && input) const {
-		return decode_from_view<Encoding, ValueT, R>(std::forward<R>(input));
+	template <std::ranges::input_range R> constexpr auto operator()(R && input) const requires(character<std::ranges::range_value_t<R>>) {
+		return decode_from_view<Encoding, R>(std::forward<R>(input));
 	}
 };
 
 template <typename Encoding, typename CharT = char> constexpr auto encode_to = encode_to_action<Encoding, CharT>{};
-template <typename Encoding, typename ValueT = unsigned char> constexpr auto decode_from = decode_from_action<Encoding, ValueT>{};
+template <typename Encoding> constexpr auto decode_from = decode_from_action<Encoding>{};
 
-constexpr auto binary_encode = encode_to<encoding::base2, char>;
-constexpr auto base2_encode = encode_to<encoding::base2, char>;
-constexpr auto base4_encode = encode_to<encoding::base4, char>;
-constexpr auto base8_encode = encode_to<encoding::base8, char>;
-constexpr auto octal_encode = encode_to<encoding::base8, char>;
-constexpr auto hexdec_encode = encode_to<encoding::base16, char>;
-constexpr auto hexdec_uppercase_encode = encode_to<encoding::base16_uppercase, char>;
-constexpr auto base16_encode = encode_to<encoding::base16, char>;
-constexpr auto base32_encode = encode_to<encoding::base32, char>;
-constexpr auto base32_no_padding_encode = encode_to<encoding::base32_no_padding, char>;
-constexpr auto z_base32_encode = encode_to<encoding::z_base32, char>;
-constexpr auto base64_encode = encode_to<encoding::base64, char>;
-constexpr auto base64url_encode = encode_to<encoding::base64url, char>;
-constexpr auto base64_no_padding_encode = encode_to<encoding::base64_no_padding, char>;
+// encoding interface
+template <typename CharT = char> constexpr auto binary_encode_to = encode_to<encoding::base2, CharT>;
+template <typename CharT = char> constexpr auto base2_encode_to = encode_to<encoding::base2, CharT>;
+template <typename CharT = char> constexpr auto base4_encode_to = encode_to<encoding::base4, CharT>;
+template <typename CharT = char> constexpr auto base8_encode_to = encode_to<encoding::base8, CharT>;
+template <typename CharT = char> constexpr auto octal_encode_to = encode_to<encoding::base8, CharT>;
+template <typename CharT = char> constexpr auto hexdec_encode_to = encode_to<encoding::base16, CharT>;
+template <typename CharT = char> constexpr auto hexdec_uppercase_encode_to = encode_to<encoding::base16_uppercase, CharT>;
+template <typename CharT = char> constexpr auto base16_encode_to = encode_to<encoding::base16, CharT>;
+template <typename CharT = char> constexpr auto base32_encode_to = encode_to<encoding::base32, CharT>;
+template <typename CharT = char> constexpr auto base32_no_padding_encode_to = encode_to<encoding::base32_no_padding, CharT>;
+template <typename CharT = char> constexpr auto z_base32_encode_to = encode_to<encoding::z_base32, CharT>;
+template <typename CharT = char> constexpr auto base64_encode_to = encode_to<encoding::base64, CharT>;
+template <typename CharT = char> constexpr auto base64url_encode_to = encode_to<encoding::base64url, CharT>;
+template <typename CharT = char> constexpr auto base64_no_padding_encode_to = encode_to<encoding::base64_no_padding, CharT>;
 
-constexpr auto binary_decode = decode_from<encoding::base2, char>;
-constexpr auto base2_decode = decode_from<encoding::base2, char>;
-constexpr auto base4_decode = decode_from<encoding::base4, char>;
-constexpr auto base8_decode = decode_from<encoding::base8, char>;
-constexpr auto hexdec_decode = decode_from<encoding::base16, char>;
-constexpr auto base16_decode = decode_from<encoding::base16, char>;
-constexpr auto base32_decode = decode_from<encoding::base32, char>;
-constexpr auto z_base32_decode = decode_from<encoding::z_base32, char>;
-constexpr auto base64_decode = decode_from<encoding::base64, char>;
-constexpr auto base64url_decode = decode_from<encoding::base64url, char>;
-constexpr auto base64_no_padding_decode = decode_from<encoding::base64_no_padding, char>;
+constexpr auto binary_encode = binary_encode_to<char>;
+constexpr auto base2_encode = base2_encode_to<char>;
+constexpr auto base4_encode = base4_encode_to<char>;
+constexpr auto base8_encode = base8_encode_to<char>;
+constexpr auto octal_encode = octal_encode_to<char>;
+constexpr auto hexdec_encode = hexdec_encode_to<char>;
+constexpr auto hexdec_uppercase_encode = hexdec_uppercase_encode_to<char>;
+constexpr auto base16_encode = base16_encode_to<char>;
+constexpr auto base32_encode = base32_encode_to<char>;
+constexpr auto base32_no_padding_encode = base32_no_padding_encode_to<char>;
+constexpr auto z_base32_encode = z_base32_encode_to<char>;
+constexpr auto base64_encode = base64_encode_to<char>;
+constexpr auto base64url_encode = base64url_encode_to<char>;
+constexpr auto base64_no_padding_encode = base64_no_padding_encode_to<char>;
+
+// decoding
+constexpr auto binary_decode = decode_from<encoding::base2>;
+constexpr auto base2_decode = decode_from<encoding::base2>;
+constexpr auto base4_decode = decode_from<encoding::base4>;
+constexpr auto base8_decode = decode_from<encoding::base8>;
+constexpr auto hexdec_decode = decode_from<encoding::base16>;
+constexpr auto base16_decode = decode_from<encoding::base16>;
+constexpr auto base32_decode = decode_from<encoding::base32>;
+constexpr auto z_base32_decode = decode_from<encoding::z_base32>;
+constexpr auto base64_decode = decode_from<encoding::base64>;
+constexpr auto base64url_decode = decode_from<encoding::base64url>;
+constexpr auto base64_no_padding_decode = decode_from<encoding::base64_no_padding>;
 
 } // namespace cthash
 
@@ -16795,6 +17579,8 @@ template <typename T, typename... Types> concept one_of = (std::same_as<T, Types
 
 template <typename T> concept byte = one_of<std::remove_cvref_t<T>, char, unsigned char, signed char, uint8_t, int8_t, std::byte>;
 
+template <typename T> concept character = one_of<std::remove_cvref_t<T>, char, unsigned char, signed char, char8_t, char16_t, char32_t, wchar_t>;
+
 template <typename Encoding> concept padded_encoding = requires() {
 	{ Encoding::padding } -> cthash::byte;
 };
@@ -16843,6 +17629,7 @@ namespace encoding {
 		static constexpr std::string_view name = "base32";
 
 		static constexpr char alphabet[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+		static constexpr char alt_alphabet[] = "abcdefghijklmnopqrstuvwxyz234567";
 		static constexpr char padding = '=';
 	};
 
@@ -16850,6 +17637,7 @@ namespace encoding {
 		static constexpr std::string_view name = "base32_no_padding";
 
 		static constexpr char alphabet[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+		static constexpr char alt_alphabet[] = "abcdefghijklmnopqrstuvwxyz234567";
 	};
 
 	struct z_base32 {
@@ -16857,6 +17645,7 @@ namespace encoding {
 		static constexpr std::string_view alt_name = "zbase32";
 
 		static constexpr char alphabet[] = "ybndrfg8ejkmcpqxot1uwisza345h769";
+		static constexpr char alt_alphabet[] = "YBNDRFG8EJKMCPQXOT1UWISZA345H769";
 	};
 
 	struct base16 {
@@ -16864,6 +17653,7 @@ namespace encoding {
 		static constexpr std::string_view alt_name = "hexdec";
 
 		static constexpr char alphabet[] = "0123456789abcdef";
+		static constexpr char alt_alphabet[] = "0123456789ABCDEF";
 	};
 
 	using hexdec = base16;
@@ -16873,6 +17663,7 @@ namespace encoding {
 		static constexpr std::string_view alt_name = "HEXDEC";
 
 		static constexpr char alphabet[] = "0123456789ABCDEF";
+		static constexpr char alt_alphabet[] = "0123456789abcdef";
 	};
 
 	using hexdec_uppercase = base16_uppercase;
@@ -16905,6 +17696,35 @@ namespace encoding {
 	using known_encodings = list<base64, base64_no_padding, base64url, base32, base32_no_padding, z_base32, base16, base16_uppercase, base8, base4, base2>;
 
 } // namespace encoding
+
+struct translation_table {
+	static constexpr size_t table_size = 256;
+	uint8_t data[table_size];
+	consteval translation_table() {
+		for (size_t i = 0; i != table_size; ++i) {
+			data[i] = 255u;
+		}
+	}
+	consteval bool insert_alphabet(std::string_view input) {
+		const size_t length = input.size();
+		for (size_t i = 0; i != length; ++i) {
+			const size_t c = static_cast<size_t>(static_cast<unsigned char>(input[i]));
+			data[c] = static_cast<uint8_t>(i);
+		}
+		return true;
+	}
+};
+
+template <typename Encoding> struct decoding_alphabet {
+	static constexpr auto table = [] {
+		translation_table output{};
+		output.insert_alphabet(Encoding::alphabet);
+		if constexpr (requires { Encoding::alt_alphabet; }) {
+			output.insert_alphabet(Encoding::alt_alphabet);
+		}
+		return output;
+	}();
+};
 
 template <typename Defs> struct dynamic_encodings;
 
@@ -16948,7 +17768,11 @@ template <typename... List> struct dynamic_encodings<encoding::list<List...>>: s
 		const auto success = (unsigned(assign_encoding<List>(name, output)) | ... | 0u);
 
 		if (!success) {
+#if __has_feature(cxx_exceptions)
 			throw std::invalid_argument{"unknown encoding name"};
+#else
+			std::abort();
+#endif
 		}
 
 		assert(output.has_value());
@@ -18154,6 +18978,8 @@ template <typename T, typename... Types> concept one_of = (std::same_as<T, Types
 
 template <typename T> concept byte = one_of<std::remove_cvref_t<T>, char, unsigned char, signed char, uint8_t, int8_t, std::byte>;
 
+template <typename T> concept character = one_of<std::remove_cvref_t<T>, char, unsigned char, signed char, char8_t, char16_t, char32_t, wchar_t>;
+
 template <typename Encoding> concept padded_encoding = requires() {
 	{ Encoding::padding } -> cthash::byte;
 };
@@ -18634,6 +19460,8 @@ template <typename T, typename... Types> concept one_of = (std::same_as<T, Types
 
 template <typename T> concept byte = one_of<std::remove_cvref_t<T>, char, unsigned char, signed char, uint8_t, int8_t, std::byte>;
 
+template <typename T> concept character = one_of<std::remove_cvref_t<T>, char, unsigned char, signed char, char8_t, char16_t, char32_t, wchar_t>;
+
 template <typename Encoding> concept padded_encoding = requires() {
 	{ Encoding::padding } -> cthash::byte;
 };
@@ -18682,6 +19510,7 @@ namespace encoding {
 		static constexpr std::string_view name = "base32";
 
 		static constexpr char alphabet[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+		static constexpr char alt_alphabet[] = "abcdefghijklmnopqrstuvwxyz234567";
 		static constexpr char padding = '=';
 	};
 
@@ -18689,6 +19518,7 @@ namespace encoding {
 		static constexpr std::string_view name = "base32_no_padding";
 
 		static constexpr char alphabet[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+		static constexpr char alt_alphabet[] = "abcdefghijklmnopqrstuvwxyz234567";
 	};
 
 	struct z_base32 {
@@ -18696,6 +19526,7 @@ namespace encoding {
 		static constexpr std::string_view alt_name = "zbase32";
 
 		static constexpr char alphabet[] = "ybndrfg8ejkmcpqxot1uwisza345h769";
+		static constexpr char alt_alphabet[] = "YBNDRFG8EJKMCPQXOT1UWISZA345H769";
 	};
 
 	struct base16 {
@@ -18703,6 +19534,7 @@ namespace encoding {
 		static constexpr std::string_view alt_name = "hexdec";
 
 		static constexpr char alphabet[] = "0123456789abcdef";
+		static constexpr char alt_alphabet[] = "0123456789ABCDEF";
 	};
 
 	using hexdec = base16;
@@ -18712,6 +19544,7 @@ namespace encoding {
 		static constexpr std::string_view alt_name = "HEXDEC";
 
 		static constexpr char alphabet[] = "0123456789ABCDEF";
+		static constexpr char alt_alphabet[] = "0123456789abcdef";
 	};
 
 	using hexdec_uppercase = base16_uppercase;
@@ -18744,6 +19577,35 @@ namespace encoding {
 	using known_encodings = list<base64, base64_no_padding, base64url, base32, base32_no_padding, z_base32, base16, base16_uppercase, base8, base4, base2>;
 
 } // namespace encoding
+
+struct translation_table {
+	static constexpr size_t table_size = 256;
+	uint8_t data[table_size];
+	consteval translation_table() {
+		for (size_t i = 0; i != table_size; ++i) {
+			data[i] = 255u;
+		}
+	}
+	consteval bool insert_alphabet(std::string_view input) {
+		const size_t length = input.size();
+		for (size_t i = 0; i != length; ++i) {
+			const size_t c = static_cast<size_t>(static_cast<unsigned char>(input[i]));
+			data[c] = static_cast<uint8_t>(i);
+		}
+		return true;
+	}
+};
+
+template <typename Encoding> struct decoding_alphabet {
+	static constexpr auto table = [] {
+		translation_table output{};
+		output.insert_alphabet(Encoding::alphabet);
+		if constexpr (requires { Encoding::alt_alphabet; }) {
+			output.insert_alphabet(Encoding::alt_alphabet);
+		}
+		return output;
+	}();
+};
 
 template <typename Defs> struct dynamic_encodings;
 
@@ -18787,7 +19649,11 @@ template <typename... List> struct dynamic_encodings<encoding::list<List...>>: s
 		const auto success = (unsigned(assign_encoding<List>(name, output)) | ... | 0u);
 
 		if (!success) {
+#if __has_feature(cxx_exceptions)
 			throw std::invalid_argument{"unknown encoding name"};
+#else
+			std::abort();
+#endif
 		}
 
 		assert(output.has_value());
@@ -18958,7 +19824,10 @@ template <typename Encoding, typename CharT, typename R> struct encode_to_view {
 	}
 };
 
-template <typename Encoding, typename ValueT, typename R> struct decode_from_view {
+template <typename Encoding, typename R> struct decode_from_view {
+	using table = decoding_alphabet<Encoding>;
+	using input_value_type = std::ranges::range_value_t<R>;
+
 	R input;
 
 	template <bool Const> struct iterator { };
@@ -18992,44 +19861,61 @@ template <typename Encoding, typename CharT = char> struct encode_to_action {
 	}
 };
 
-template <typename Encoding, typename ValueT = unsigned char> struct decode_from_action {
-	template <std::ranges::input_range R> constexpr friend auto operator|(R && input, decode_from_action action) {
+template <typename Encoding> struct decode_from_action {
+	template <std::ranges::input_range R> constexpr friend auto operator|(R && input, decode_from_action action) requires(character<std::ranges::range_value_t<R>>) {
 		return action.operator()<R>(std::forward<R>(input));
 	}
-	template <std::ranges::input_range R> constexpr auto operator()(R && input) const {
-		return decode_from_view<Encoding, ValueT, R>(std::forward<R>(input));
+	template <std::ranges::input_range R> constexpr auto operator()(R && input) const requires(character<std::ranges::range_value_t<R>>) {
+		return decode_from_view<Encoding, R>(std::forward<R>(input));
 	}
 };
 
 template <typename Encoding, typename CharT = char> constexpr auto encode_to = encode_to_action<Encoding, CharT>{};
-template <typename Encoding, typename ValueT = unsigned char> constexpr auto decode_from = decode_from_action<Encoding, ValueT>{};
+template <typename Encoding> constexpr auto decode_from = decode_from_action<Encoding>{};
 
-constexpr auto binary_encode = encode_to<encoding::base2, char>;
-constexpr auto base2_encode = encode_to<encoding::base2, char>;
-constexpr auto base4_encode = encode_to<encoding::base4, char>;
-constexpr auto base8_encode = encode_to<encoding::base8, char>;
-constexpr auto octal_encode = encode_to<encoding::base8, char>;
-constexpr auto hexdec_encode = encode_to<encoding::base16, char>;
-constexpr auto hexdec_uppercase_encode = encode_to<encoding::base16_uppercase, char>;
-constexpr auto base16_encode = encode_to<encoding::base16, char>;
-constexpr auto base32_encode = encode_to<encoding::base32, char>;
-constexpr auto base32_no_padding_encode = encode_to<encoding::base32_no_padding, char>;
-constexpr auto z_base32_encode = encode_to<encoding::z_base32, char>;
-constexpr auto base64_encode = encode_to<encoding::base64, char>;
-constexpr auto base64url_encode = encode_to<encoding::base64url, char>;
-constexpr auto base64_no_padding_encode = encode_to<encoding::base64_no_padding, char>;
+// encoding interface
+template <typename CharT = char> constexpr auto binary_encode_to = encode_to<encoding::base2, CharT>;
+template <typename CharT = char> constexpr auto base2_encode_to = encode_to<encoding::base2, CharT>;
+template <typename CharT = char> constexpr auto base4_encode_to = encode_to<encoding::base4, CharT>;
+template <typename CharT = char> constexpr auto base8_encode_to = encode_to<encoding::base8, CharT>;
+template <typename CharT = char> constexpr auto octal_encode_to = encode_to<encoding::base8, CharT>;
+template <typename CharT = char> constexpr auto hexdec_encode_to = encode_to<encoding::base16, CharT>;
+template <typename CharT = char> constexpr auto hexdec_uppercase_encode_to = encode_to<encoding::base16_uppercase, CharT>;
+template <typename CharT = char> constexpr auto base16_encode_to = encode_to<encoding::base16, CharT>;
+template <typename CharT = char> constexpr auto base32_encode_to = encode_to<encoding::base32, CharT>;
+template <typename CharT = char> constexpr auto base32_no_padding_encode_to = encode_to<encoding::base32_no_padding, CharT>;
+template <typename CharT = char> constexpr auto z_base32_encode_to = encode_to<encoding::z_base32, CharT>;
+template <typename CharT = char> constexpr auto base64_encode_to = encode_to<encoding::base64, CharT>;
+template <typename CharT = char> constexpr auto base64url_encode_to = encode_to<encoding::base64url, CharT>;
+template <typename CharT = char> constexpr auto base64_no_padding_encode_to = encode_to<encoding::base64_no_padding, CharT>;
 
-constexpr auto binary_decode = decode_from<encoding::base2, char>;
-constexpr auto base2_decode = decode_from<encoding::base2, char>;
-constexpr auto base4_decode = decode_from<encoding::base4, char>;
-constexpr auto base8_decode = decode_from<encoding::base8, char>;
-constexpr auto hexdec_decode = decode_from<encoding::base16, char>;
-constexpr auto base16_decode = decode_from<encoding::base16, char>;
-constexpr auto base32_decode = decode_from<encoding::base32, char>;
-constexpr auto z_base32_decode = decode_from<encoding::z_base32, char>;
-constexpr auto base64_decode = decode_from<encoding::base64, char>;
-constexpr auto base64url_decode = decode_from<encoding::base64url, char>;
-constexpr auto base64_no_padding_decode = decode_from<encoding::base64_no_padding, char>;
+constexpr auto binary_encode = binary_encode_to<char>;
+constexpr auto base2_encode = base2_encode_to<char>;
+constexpr auto base4_encode = base4_encode_to<char>;
+constexpr auto base8_encode = base8_encode_to<char>;
+constexpr auto octal_encode = octal_encode_to<char>;
+constexpr auto hexdec_encode = hexdec_encode_to<char>;
+constexpr auto hexdec_uppercase_encode = hexdec_uppercase_encode_to<char>;
+constexpr auto base16_encode = base16_encode_to<char>;
+constexpr auto base32_encode = base32_encode_to<char>;
+constexpr auto base32_no_padding_encode = base32_no_padding_encode_to<char>;
+constexpr auto z_base32_encode = z_base32_encode_to<char>;
+constexpr auto base64_encode = base64_encode_to<char>;
+constexpr auto base64url_encode = base64url_encode_to<char>;
+constexpr auto base64_no_padding_encode = base64_no_padding_encode_to<char>;
+
+// decoding
+constexpr auto binary_decode = decode_from<encoding::base2>;
+constexpr auto base2_decode = decode_from<encoding::base2>;
+constexpr auto base4_decode = decode_from<encoding::base4>;
+constexpr auto base8_decode = decode_from<encoding::base8>;
+constexpr auto hexdec_decode = decode_from<encoding::base16>;
+constexpr auto base16_decode = decode_from<encoding::base16>;
+constexpr auto base32_decode = decode_from<encoding::base32>;
+constexpr auto z_base32_decode = decode_from<encoding::z_base32>;
+constexpr auto base64_decode = decode_from<encoding::base64>;
+constexpr auto base64url_decode = decode_from<encoding::base64url>;
+constexpr auto base64_no_padding_decode = decode_from<encoding::base64_no_padding>;
 
 } // namespace cthash
 
@@ -19080,6 +19966,8 @@ template <typename T, typename... Types> concept one_of = (std::same_as<T, Types
 
 template <typename T> concept byte = one_of<std::remove_cvref_t<T>, char, unsigned char, signed char, uint8_t, int8_t, std::byte>;
 
+template <typename T> concept character = one_of<std::remove_cvref_t<T>, char, unsigned char, signed char, char8_t, char16_t, char32_t, wchar_t>;
+
 template <typename Encoding> concept padded_encoding = requires() {
 	{ Encoding::padding } -> cthash::byte;
 };
@@ -19128,6 +20016,7 @@ namespace encoding {
 		static constexpr std::string_view name = "base32";
 
 		static constexpr char alphabet[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+		static constexpr char alt_alphabet[] = "abcdefghijklmnopqrstuvwxyz234567";
 		static constexpr char padding = '=';
 	};
 
@@ -19135,6 +20024,7 @@ namespace encoding {
 		static constexpr std::string_view name = "base32_no_padding";
 
 		static constexpr char alphabet[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+		static constexpr char alt_alphabet[] = "abcdefghijklmnopqrstuvwxyz234567";
 	};
 
 	struct z_base32 {
@@ -19142,6 +20032,7 @@ namespace encoding {
 		static constexpr std::string_view alt_name = "zbase32";
 
 		static constexpr char alphabet[] = "ybndrfg8ejkmcpqxot1uwisza345h769";
+		static constexpr char alt_alphabet[] = "YBNDRFG8EJKMCPQXOT1UWISZA345H769";
 	};
 
 	struct base16 {
@@ -19149,6 +20040,7 @@ namespace encoding {
 		static constexpr std::string_view alt_name = "hexdec";
 
 		static constexpr char alphabet[] = "0123456789abcdef";
+		static constexpr char alt_alphabet[] = "0123456789ABCDEF";
 	};
 
 	using hexdec = base16;
@@ -19158,6 +20050,7 @@ namespace encoding {
 		static constexpr std::string_view alt_name = "HEXDEC";
 
 		static constexpr char alphabet[] = "0123456789ABCDEF";
+		static constexpr char alt_alphabet[] = "0123456789abcdef";
 	};
 
 	using hexdec_uppercase = base16_uppercase;
@@ -19190,6 +20083,35 @@ namespace encoding {
 	using known_encodings = list<base64, base64_no_padding, base64url, base32, base32_no_padding, z_base32, base16, base16_uppercase, base8, base4, base2>;
 
 } // namespace encoding
+
+struct translation_table {
+	static constexpr size_t table_size = 256;
+	uint8_t data[table_size];
+	consteval translation_table() {
+		for (size_t i = 0; i != table_size; ++i) {
+			data[i] = 255u;
+		}
+	}
+	consteval bool insert_alphabet(std::string_view input) {
+		const size_t length = input.size();
+		for (size_t i = 0; i != length; ++i) {
+			const size_t c = static_cast<size_t>(static_cast<unsigned char>(input[i]));
+			data[c] = static_cast<uint8_t>(i);
+		}
+		return true;
+	}
+};
+
+template <typename Encoding> struct decoding_alphabet {
+	static constexpr auto table = [] {
+		translation_table output{};
+		output.insert_alphabet(Encoding::alphabet);
+		if constexpr (requires { Encoding::alt_alphabet; }) {
+			output.insert_alphabet(Encoding::alt_alphabet);
+		}
+		return output;
+	}();
+};
 
 template <typename Defs> struct dynamic_encodings;
 
@@ -19233,7 +20155,11 @@ template <typename... List> struct dynamic_encodings<encoding::list<List...>>: s
 		const auto success = (unsigned(assign_encoding<List>(name, output)) | ... | 0u);
 
 		if (!success) {
+#if __has_feature(cxx_exceptions)
 			throw std::invalid_argument{"unknown encoding name"};
+#else
+			std::abort();
+#endif
 		}
 
 		assert(output.has_value());
@@ -20213,6 +21139,8 @@ template <typename T, typename... Types> concept one_of = (std::same_as<T, Types
 
 template <typename T> concept byte = one_of<std::remove_cvref_t<T>, char, unsigned char, signed char, uint8_t, int8_t, std::byte>;
 
+template <typename T> concept character = one_of<std::remove_cvref_t<T>, char, unsigned char, signed char, char8_t, char16_t, char32_t, wchar_t>;
+
 template <typename Encoding> concept padded_encoding = requires() {
 	{ Encoding::padding } -> cthash::byte;
 };
@@ -20693,6 +21621,8 @@ template <typename T, typename... Types> concept one_of = (std::same_as<T, Types
 
 template <typename T> concept byte = one_of<std::remove_cvref_t<T>, char, unsigned char, signed char, uint8_t, int8_t, std::byte>;
 
+template <typename T> concept character = one_of<std::remove_cvref_t<T>, char, unsigned char, signed char, char8_t, char16_t, char32_t, wchar_t>;
+
 template <typename Encoding> concept padded_encoding = requires() {
 	{ Encoding::padding } -> cthash::byte;
 };
@@ -20741,6 +21671,7 @@ namespace encoding {
 		static constexpr std::string_view name = "base32";
 
 		static constexpr char alphabet[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+		static constexpr char alt_alphabet[] = "abcdefghijklmnopqrstuvwxyz234567";
 		static constexpr char padding = '=';
 	};
 
@@ -20748,6 +21679,7 @@ namespace encoding {
 		static constexpr std::string_view name = "base32_no_padding";
 
 		static constexpr char alphabet[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+		static constexpr char alt_alphabet[] = "abcdefghijklmnopqrstuvwxyz234567";
 	};
 
 	struct z_base32 {
@@ -20755,6 +21687,7 @@ namespace encoding {
 		static constexpr std::string_view alt_name = "zbase32";
 
 		static constexpr char alphabet[] = "ybndrfg8ejkmcpqxot1uwisza345h769";
+		static constexpr char alt_alphabet[] = "YBNDRFG8EJKMCPQXOT1UWISZA345H769";
 	};
 
 	struct base16 {
@@ -20762,6 +21695,7 @@ namespace encoding {
 		static constexpr std::string_view alt_name = "hexdec";
 
 		static constexpr char alphabet[] = "0123456789abcdef";
+		static constexpr char alt_alphabet[] = "0123456789ABCDEF";
 	};
 
 	using hexdec = base16;
@@ -20771,6 +21705,7 @@ namespace encoding {
 		static constexpr std::string_view alt_name = "HEXDEC";
 
 		static constexpr char alphabet[] = "0123456789ABCDEF";
+		static constexpr char alt_alphabet[] = "0123456789abcdef";
 	};
 
 	using hexdec_uppercase = base16_uppercase;
@@ -20803,6 +21738,35 @@ namespace encoding {
 	using known_encodings = list<base64, base64_no_padding, base64url, base32, base32_no_padding, z_base32, base16, base16_uppercase, base8, base4, base2>;
 
 } // namespace encoding
+
+struct translation_table {
+	static constexpr size_t table_size = 256;
+	uint8_t data[table_size];
+	consteval translation_table() {
+		for (size_t i = 0; i != table_size; ++i) {
+			data[i] = 255u;
+		}
+	}
+	consteval bool insert_alphabet(std::string_view input) {
+		const size_t length = input.size();
+		for (size_t i = 0; i != length; ++i) {
+			const size_t c = static_cast<size_t>(static_cast<unsigned char>(input[i]));
+			data[c] = static_cast<uint8_t>(i);
+		}
+		return true;
+	}
+};
+
+template <typename Encoding> struct decoding_alphabet {
+	static constexpr auto table = [] {
+		translation_table output{};
+		output.insert_alphabet(Encoding::alphabet);
+		if constexpr (requires { Encoding::alt_alphabet; }) {
+			output.insert_alphabet(Encoding::alt_alphabet);
+		}
+		return output;
+	}();
+};
 
 template <typename Defs> struct dynamic_encodings;
 
@@ -20846,7 +21810,11 @@ template <typename... List> struct dynamic_encodings<encoding::list<List...>>: s
 		const auto success = (unsigned(assign_encoding<List>(name, output)) | ... | 0u);
 
 		if (!success) {
+#if __has_feature(cxx_exceptions)
 			throw std::invalid_argument{"unknown encoding name"};
+#else
+			std::abort();
+#endif
 		}
 
 		assert(output.has_value());
@@ -21017,7 +21985,10 @@ template <typename Encoding, typename CharT, typename R> struct encode_to_view {
 	}
 };
 
-template <typename Encoding, typename ValueT, typename R> struct decode_from_view {
+template <typename Encoding, typename R> struct decode_from_view {
+	using table = decoding_alphabet<Encoding>;
+	using input_value_type = std::ranges::range_value_t<R>;
+
 	R input;
 
 	template <bool Const> struct iterator { };
@@ -21051,44 +22022,61 @@ template <typename Encoding, typename CharT = char> struct encode_to_action {
 	}
 };
 
-template <typename Encoding, typename ValueT = unsigned char> struct decode_from_action {
-	template <std::ranges::input_range R> constexpr friend auto operator|(R && input, decode_from_action action) {
+template <typename Encoding> struct decode_from_action {
+	template <std::ranges::input_range R> constexpr friend auto operator|(R && input, decode_from_action action) requires(character<std::ranges::range_value_t<R>>) {
 		return action.operator()<R>(std::forward<R>(input));
 	}
-	template <std::ranges::input_range R> constexpr auto operator()(R && input) const {
-		return decode_from_view<Encoding, ValueT, R>(std::forward<R>(input));
+	template <std::ranges::input_range R> constexpr auto operator()(R && input) const requires(character<std::ranges::range_value_t<R>>) {
+		return decode_from_view<Encoding, R>(std::forward<R>(input));
 	}
 };
 
 template <typename Encoding, typename CharT = char> constexpr auto encode_to = encode_to_action<Encoding, CharT>{};
-template <typename Encoding, typename ValueT = unsigned char> constexpr auto decode_from = decode_from_action<Encoding, ValueT>{};
+template <typename Encoding> constexpr auto decode_from = decode_from_action<Encoding>{};
 
-constexpr auto binary_encode = encode_to<encoding::base2, char>;
-constexpr auto base2_encode = encode_to<encoding::base2, char>;
-constexpr auto base4_encode = encode_to<encoding::base4, char>;
-constexpr auto base8_encode = encode_to<encoding::base8, char>;
-constexpr auto octal_encode = encode_to<encoding::base8, char>;
-constexpr auto hexdec_encode = encode_to<encoding::base16, char>;
-constexpr auto hexdec_uppercase_encode = encode_to<encoding::base16_uppercase, char>;
-constexpr auto base16_encode = encode_to<encoding::base16, char>;
-constexpr auto base32_encode = encode_to<encoding::base32, char>;
-constexpr auto base32_no_padding_encode = encode_to<encoding::base32_no_padding, char>;
-constexpr auto z_base32_encode = encode_to<encoding::z_base32, char>;
-constexpr auto base64_encode = encode_to<encoding::base64, char>;
-constexpr auto base64url_encode = encode_to<encoding::base64url, char>;
-constexpr auto base64_no_padding_encode = encode_to<encoding::base64_no_padding, char>;
+// encoding interface
+template <typename CharT = char> constexpr auto binary_encode_to = encode_to<encoding::base2, CharT>;
+template <typename CharT = char> constexpr auto base2_encode_to = encode_to<encoding::base2, CharT>;
+template <typename CharT = char> constexpr auto base4_encode_to = encode_to<encoding::base4, CharT>;
+template <typename CharT = char> constexpr auto base8_encode_to = encode_to<encoding::base8, CharT>;
+template <typename CharT = char> constexpr auto octal_encode_to = encode_to<encoding::base8, CharT>;
+template <typename CharT = char> constexpr auto hexdec_encode_to = encode_to<encoding::base16, CharT>;
+template <typename CharT = char> constexpr auto hexdec_uppercase_encode_to = encode_to<encoding::base16_uppercase, CharT>;
+template <typename CharT = char> constexpr auto base16_encode_to = encode_to<encoding::base16, CharT>;
+template <typename CharT = char> constexpr auto base32_encode_to = encode_to<encoding::base32, CharT>;
+template <typename CharT = char> constexpr auto base32_no_padding_encode_to = encode_to<encoding::base32_no_padding, CharT>;
+template <typename CharT = char> constexpr auto z_base32_encode_to = encode_to<encoding::z_base32, CharT>;
+template <typename CharT = char> constexpr auto base64_encode_to = encode_to<encoding::base64, CharT>;
+template <typename CharT = char> constexpr auto base64url_encode_to = encode_to<encoding::base64url, CharT>;
+template <typename CharT = char> constexpr auto base64_no_padding_encode_to = encode_to<encoding::base64_no_padding, CharT>;
 
-constexpr auto binary_decode = decode_from<encoding::base2, char>;
-constexpr auto base2_decode = decode_from<encoding::base2, char>;
-constexpr auto base4_decode = decode_from<encoding::base4, char>;
-constexpr auto base8_decode = decode_from<encoding::base8, char>;
-constexpr auto hexdec_decode = decode_from<encoding::base16, char>;
-constexpr auto base16_decode = decode_from<encoding::base16, char>;
-constexpr auto base32_decode = decode_from<encoding::base32, char>;
-constexpr auto z_base32_decode = decode_from<encoding::z_base32, char>;
-constexpr auto base64_decode = decode_from<encoding::base64, char>;
-constexpr auto base64url_decode = decode_from<encoding::base64url, char>;
-constexpr auto base64_no_padding_decode = decode_from<encoding::base64_no_padding, char>;
+constexpr auto binary_encode = binary_encode_to<char>;
+constexpr auto base2_encode = base2_encode_to<char>;
+constexpr auto base4_encode = base4_encode_to<char>;
+constexpr auto base8_encode = base8_encode_to<char>;
+constexpr auto octal_encode = octal_encode_to<char>;
+constexpr auto hexdec_encode = hexdec_encode_to<char>;
+constexpr auto hexdec_uppercase_encode = hexdec_uppercase_encode_to<char>;
+constexpr auto base16_encode = base16_encode_to<char>;
+constexpr auto base32_encode = base32_encode_to<char>;
+constexpr auto base32_no_padding_encode = base32_no_padding_encode_to<char>;
+constexpr auto z_base32_encode = z_base32_encode_to<char>;
+constexpr auto base64_encode = base64_encode_to<char>;
+constexpr auto base64url_encode = base64url_encode_to<char>;
+constexpr auto base64_no_padding_encode = base64_no_padding_encode_to<char>;
+
+// decoding
+constexpr auto binary_decode = decode_from<encoding::base2>;
+constexpr auto base2_decode = decode_from<encoding::base2>;
+constexpr auto base4_decode = decode_from<encoding::base4>;
+constexpr auto base8_decode = decode_from<encoding::base8>;
+constexpr auto hexdec_decode = decode_from<encoding::base16>;
+constexpr auto base16_decode = decode_from<encoding::base16>;
+constexpr auto base32_decode = decode_from<encoding::base32>;
+constexpr auto z_base32_decode = decode_from<encoding::z_base32>;
+constexpr auto base64_decode = decode_from<encoding::base64>;
+constexpr auto base64url_decode = decode_from<encoding::base64url>;
+constexpr auto base64_no_padding_decode = decode_from<encoding::base64_no_padding>;
 
 } // namespace cthash
 
@@ -21139,6 +22127,8 @@ template <typename T, typename... Types> concept one_of = (std::same_as<T, Types
 
 template <typename T> concept byte = one_of<std::remove_cvref_t<T>, char, unsigned char, signed char, uint8_t, int8_t, std::byte>;
 
+template <typename T> concept character = one_of<std::remove_cvref_t<T>, char, unsigned char, signed char, char8_t, char16_t, char32_t, wchar_t>;
+
 template <typename Encoding> concept padded_encoding = requires() {
 	{ Encoding::padding } -> cthash::byte;
 };
@@ -21187,6 +22177,7 @@ namespace encoding {
 		static constexpr std::string_view name = "base32";
 
 		static constexpr char alphabet[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+		static constexpr char alt_alphabet[] = "abcdefghijklmnopqrstuvwxyz234567";
 		static constexpr char padding = '=';
 	};
 
@@ -21194,6 +22185,7 @@ namespace encoding {
 		static constexpr std::string_view name = "base32_no_padding";
 
 		static constexpr char alphabet[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+		static constexpr char alt_alphabet[] = "abcdefghijklmnopqrstuvwxyz234567";
 	};
 
 	struct z_base32 {
@@ -21201,6 +22193,7 @@ namespace encoding {
 		static constexpr std::string_view alt_name = "zbase32";
 
 		static constexpr char alphabet[] = "ybndrfg8ejkmcpqxot1uwisza345h769";
+		static constexpr char alt_alphabet[] = "YBNDRFG8EJKMCPQXOT1UWISZA345H769";
 	};
 
 	struct base16 {
@@ -21208,6 +22201,7 @@ namespace encoding {
 		static constexpr std::string_view alt_name = "hexdec";
 
 		static constexpr char alphabet[] = "0123456789abcdef";
+		static constexpr char alt_alphabet[] = "0123456789ABCDEF";
 	};
 
 	using hexdec = base16;
@@ -21217,6 +22211,7 @@ namespace encoding {
 		static constexpr std::string_view alt_name = "HEXDEC";
 
 		static constexpr char alphabet[] = "0123456789ABCDEF";
+		static constexpr char alt_alphabet[] = "0123456789abcdef";
 	};
 
 	using hexdec_uppercase = base16_uppercase;
@@ -21249,6 +22244,35 @@ namespace encoding {
 	using known_encodings = list<base64, base64_no_padding, base64url, base32, base32_no_padding, z_base32, base16, base16_uppercase, base8, base4, base2>;
 
 } // namespace encoding
+
+struct translation_table {
+	static constexpr size_t table_size = 256;
+	uint8_t data[table_size];
+	consteval translation_table() {
+		for (size_t i = 0; i != table_size; ++i) {
+			data[i] = 255u;
+		}
+	}
+	consteval bool insert_alphabet(std::string_view input) {
+		const size_t length = input.size();
+		for (size_t i = 0; i != length; ++i) {
+			const size_t c = static_cast<size_t>(static_cast<unsigned char>(input[i]));
+			data[c] = static_cast<uint8_t>(i);
+		}
+		return true;
+	}
+};
+
+template <typename Encoding> struct decoding_alphabet {
+	static constexpr auto table = [] {
+		translation_table output{};
+		output.insert_alphabet(Encoding::alphabet);
+		if constexpr (requires { Encoding::alt_alphabet; }) {
+			output.insert_alphabet(Encoding::alt_alphabet);
+		}
+		return output;
+	}();
+};
 
 template <typename Defs> struct dynamic_encodings;
 
@@ -21292,7 +22316,11 @@ template <typename... List> struct dynamic_encodings<encoding::list<List...>>: s
 		const auto success = (unsigned(assign_encoding<List>(name, output)) | ... | 0u);
 
 		if (!success) {
+#if __has_feature(cxx_exceptions)
 			throw std::invalid_argument{"unknown encoding name"};
+#else
+			std::abort();
+#endif
 		}
 
 		assert(output.has_value());
@@ -22498,6 +23526,8 @@ template <typename T, typename... Types> concept one_of = (std::same_as<T, Types
 
 template <typename T> concept byte = one_of<std::remove_cvref_t<T>, char, unsigned char, signed char, uint8_t, int8_t, std::byte>;
 
+template <typename T> concept character = one_of<std::remove_cvref_t<T>, char, unsigned char, signed char, char8_t, char16_t, char32_t, wchar_t>;
+
 template <typename Encoding> concept padded_encoding = requires() {
 	{ Encoding::padding } -> cthash::byte;
 };
@@ -22978,6 +24008,8 @@ template <typename T, typename... Types> concept one_of = (std::same_as<T, Types
 
 template <typename T> concept byte = one_of<std::remove_cvref_t<T>, char, unsigned char, signed char, uint8_t, int8_t, std::byte>;
 
+template <typename T> concept character = one_of<std::remove_cvref_t<T>, char, unsigned char, signed char, char8_t, char16_t, char32_t, wchar_t>;
+
 template <typename Encoding> concept padded_encoding = requires() {
 	{ Encoding::padding } -> cthash::byte;
 };
@@ -23026,6 +24058,7 @@ namespace encoding {
 		static constexpr std::string_view name = "base32";
 
 		static constexpr char alphabet[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+		static constexpr char alt_alphabet[] = "abcdefghijklmnopqrstuvwxyz234567";
 		static constexpr char padding = '=';
 	};
 
@@ -23033,6 +24066,7 @@ namespace encoding {
 		static constexpr std::string_view name = "base32_no_padding";
 
 		static constexpr char alphabet[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+		static constexpr char alt_alphabet[] = "abcdefghijklmnopqrstuvwxyz234567";
 	};
 
 	struct z_base32 {
@@ -23040,6 +24074,7 @@ namespace encoding {
 		static constexpr std::string_view alt_name = "zbase32";
 
 		static constexpr char alphabet[] = "ybndrfg8ejkmcpqxot1uwisza345h769";
+		static constexpr char alt_alphabet[] = "YBNDRFG8EJKMCPQXOT1UWISZA345H769";
 	};
 
 	struct base16 {
@@ -23047,6 +24082,7 @@ namespace encoding {
 		static constexpr std::string_view alt_name = "hexdec";
 
 		static constexpr char alphabet[] = "0123456789abcdef";
+		static constexpr char alt_alphabet[] = "0123456789ABCDEF";
 	};
 
 	using hexdec = base16;
@@ -23056,6 +24092,7 @@ namespace encoding {
 		static constexpr std::string_view alt_name = "HEXDEC";
 
 		static constexpr char alphabet[] = "0123456789ABCDEF";
+		static constexpr char alt_alphabet[] = "0123456789abcdef";
 	};
 
 	using hexdec_uppercase = base16_uppercase;
@@ -23088,6 +24125,35 @@ namespace encoding {
 	using known_encodings = list<base64, base64_no_padding, base64url, base32, base32_no_padding, z_base32, base16, base16_uppercase, base8, base4, base2>;
 
 } // namespace encoding
+
+struct translation_table {
+	static constexpr size_t table_size = 256;
+	uint8_t data[table_size];
+	consteval translation_table() {
+		for (size_t i = 0; i != table_size; ++i) {
+			data[i] = 255u;
+		}
+	}
+	consteval bool insert_alphabet(std::string_view input) {
+		const size_t length = input.size();
+		for (size_t i = 0; i != length; ++i) {
+			const size_t c = static_cast<size_t>(static_cast<unsigned char>(input[i]));
+			data[c] = static_cast<uint8_t>(i);
+		}
+		return true;
+	}
+};
+
+template <typename Encoding> struct decoding_alphabet {
+	static constexpr auto table = [] {
+		translation_table output{};
+		output.insert_alphabet(Encoding::alphabet);
+		if constexpr (requires { Encoding::alt_alphabet; }) {
+			output.insert_alphabet(Encoding::alt_alphabet);
+		}
+		return output;
+	}();
+};
 
 template <typename Defs> struct dynamic_encodings;
 
@@ -23131,7 +24197,11 @@ template <typename... List> struct dynamic_encodings<encoding::list<List...>>: s
 		const auto success = (unsigned(assign_encoding<List>(name, output)) | ... | 0u);
 
 		if (!success) {
+#if __has_feature(cxx_exceptions)
 			throw std::invalid_argument{"unknown encoding name"};
+#else
+			std::abort();
+#endif
 		}
 
 		assert(output.has_value());
@@ -23302,7 +24372,10 @@ template <typename Encoding, typename CharT, typename R> struct encode_to_view {
 	}
 };
 
-template <typename Encoding, typename ValueT, typename R> struct decode_from_view {
+template <typename Encoding, typename R> struct decode_from_view {
+	using table = decoding_alphabet<Encoding>;
+	using input_value_type = std::ranges::range_value_t<R>;
+
 	R input;
 
 	template <bool Const> struct iterator { };
@@ -23336,44 +24409,61 @@ template <typename Encoding, typename CharT = char> struct encode_to_action {
 	}
 };
 
-template <typename Encoding, typename ValueT = unsigned char> struct decode_from_action {
-	template <std::ranges::input_range R> constexpr friend auto operator|(R && input, decode_from_action action) {
+template <typename Encoding> struct decode_from_action {
+	template <std::ranges::input_range R> constexpr friend auto operator|(R && input, decode_from_action action) requires(character<std::ranges::range_value_t<R>>) {
 		return action.operator()<R>(std::forward<R>(input));
 	}
-	template <std::ranges::input_range R> constexpr auto operator()(R && input) const {
-		return decode_from_view<Encoding, ValueT, R>(std::forward<R>(input));
+	template <std::ranges::input_range R> constexpr auto operator()(R && input) const requires(character<std::ranges::range_value_t<R>>) {
+		return decode_from_view<Encoding, R>(std::forward<R>(input));
 	}
 };
 
 template <typename Encoding, typename CharT = char> constexpr auto encode_to = encode_to_action<Encoding, CharT>{};
-template <typename Encoding, typename ValueT = unsigned char> constexpr auto decode_from = decode_from_action<Encoding, ValueT>{};
+template <typename Encoding> constexpr auto decode_from = decode_from_action<Encoding>{};
 
-constexpr auto binary_encode = encode_to<encoding::base2, char>;
-constexpr auto base2_encode = encode_to<encoding::base2, char>;
-constexpr auto base4_encode = encode_to<encoding::base4, char>;
-constexpr auto base8_encode = encode_to<encoding::base8, char>;
-constexpr auto octal_encode = encode_to<encoding::base8, char>;
-constexpr auto hexdec_encode = encode_to<encoding::base16, char>;
-constexpr auto hexdec_uppercase_encode = encode_to<encoding::base16_uppercase, char>;
-constexpr auto base16_encode = encode_to<encoding::base16, char>;
-constexpr auto base32_encode = encode_to<encoding::base32, char>;
-constexpr auto base32_no_padding_encode = encode_to<encoding::base32_no_padding, char>;
-constexpr auto z_base32_encode = encode_to<encoding::z_base32, char>;
-constexpr auto base64_encode = encode_to<encoding::base64, char>;
-constexpr auto base64url_encode = encode_to<encoding::base64url, char>;
-constexpr auto base64_no_padding_encode = encode_to<encoding::base64_no_padding, char>;
+// encoding interface
+template <typename CharT = char> constexpr auto binary_encode_to = encode_to<encoding::base2, CharT>;
+template <typename CharT = char> constexpr auto base2_encode_to = encode_to<encoding::base2, CharT>;
+template <typename CharT = char> constexpr auto base4_encode_to = encode_to<encoding::base4, CharT>;
+template <typename CharT = char> constexpr auto base8_encode_to = encode_to<encoding::base8, CharT>;
+template <typename CharT = char> constexpr auto octal_encode_to = encode_to<encoding::base8, CharT>;
+template <typename CharT = char> constexpr auto hexdec_encode_to = encode_to<encoding::base16, CharT>;
+template <typename CharT = char> constexpr auto hexdec_uppercase_encode_to = encode_to<encoding::base16_uppercase, CharT>;
+template <typename CharT = char> constexpr auto base16_encode_to = encode_to<encoding::base16, CharT>;
+template <typename CharT = char> constexpr auto base32_encode_to = encode_to<encoding::base32, CharT>;
+template <typename CharT = char> constexpr auto base32_no_padding_encode_to = encode_to<encoding::base32_no_padding, CharT>;
+template <typename CharT = char> constexpr auto z_base32_encode_to = encode_to<encoding::z_base32, CharT>;
+template <typename CharT = char> constexpr auto base64_encode_to = encode_to<encoding::base64, CharT>;
+template <typename CharT = char> constexpr auto base64url_encode_to = encode_to<encoding::base64url, CharT>;
+template <typename CharT = char> constexpr auto base64_no_padding_encode_to = encode_to<encoding::base64_no_padding, CharT>;
 
-constexpr auto binary_decode = decode_from<encoding::base2, char>;
-constexpr auto base2_decode = decode_from<encoding::base2, char>;
-constexpr auto base4_decode = decode_from<encoding::base4, char>;
-constexpr auto base8_decode = decode_from<encoding::base8, char>;
-constexpr auto hexdec_decode = decode_from<encoding::base16, char>;
-constexpr auto base16_decode = decode_from<encoding::base16, char>;
-constexpr auto base32_decode = decode_from<encoding::base32, char>;
-constexpr auto z_base32_decode = decode_from<encoding::z_base32, char>;
-constexpr auto base64_decode = decode_from<encoding::base64, char>;
-constexpr auto base64url_decode = decode_from<encoding::base64url, char>;
-constexpr auto base64_no_padding_decode = decode_from<encoding::base64_no_padding, char>;
+constexpr auto binary_encode = binary_encode_to<char>;
+constexpr auto base2_encode = base2_encode_to<char>;
+constexpr auto base4_encode = base4_encode_to<char>;
+constexpr auto base8_encode = base8_encode_to<char>;
+constexpr auto octal_encode = octal_encode_to<char>;
+constexpr auto hexdec_encode = hexdec_encode_to<char>;
+constexpr auto hexdec_uppercase_encode = hexdec_uppercase_encode_to<char>;
+constexpr auto base16_encode = base16_encode_to<char>;
+constexpr auto base32_encode = base32_encode_to<char>;
+constexpr auto base32_no_padding_encode = base32_no_padding_encode_to<char>;
+constexpr auto z_base32_encode = z_base32_encode_to<char>;
+constexpr auto base64_encode = base64_encode_to<char>;
+constexpr auto base64url_encode = base64url_encode_to<char>;
+constexpr auto base64_no_padding_encode = base64_no_padding_encode_to<char>;
+
+// decoding
+constexpr auto binary_decode = decode_from<encoding::base2>;
+constexpr auto base2_decode = decode_from<encoding::base2>;
+constexpr auto base4_decode = decode_from<encoding::base4>;
+constexpr auto base8_decode = decode_from<encoding::base8>;
+constexpr auto hexdec_decode = decode_from<encoding::base16>;
+constexpr auto base16_decode = decode_from<encoding::base16>;
+constexpr auto base32_decode = decode_from<encoding::base32>;
+constexpr auto z_base32_decode = decode_from<encoding::z_base32>;
+constexpr auto base64_decode = decode_from<encoding::base64>;
+constexpr auto base64url_decode = decode_from<encoding::base64url>;
+constexpr auto base64_no_padding_decode = decode_from<encoding::base64_no_padding>;
 
 } // namespace cthash
 
@@ -23424,6 +24514,8 @@ template <typename T, typename... Types> concept one_of = (std::same_as<T, Types
 
 template <typename T> concept byte = one_of<std::remove_cvref_t<T>, char, unsigned char, signed char, uint8_t, int8_t, std::byte>;
 
+template <typename T> concept character = one_of<std::remove_cvref_t<T>, char, unsigned char, signed char, char8_t, char16_t, char32_t, wchar_t>;
+
 template <typename Encoding> concept padded_encoding = requires() {
 	{ Encoding::padding } -> cthash::byte;
 };
@@ -23472,6 +24564,7 @@ namespace encoding {
 		static constexpr std::string_view name = "base32";
 
 		static constexpr char alphabet[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+		static constexpr char alt_alphabet[] = "abcdefghijklmnopqrstuvwxyz234567";
 		static constexpr char padding = '=';
 	};
 
@@ -23479,6 +24572,7 @@ namespace encoding {
 		static constexpr std::string_view name = "base32_no_padding";
 
 		static constexpr char alphabet[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+		static constexpr char alt_alphabet[] = "abcdefghijklmnopqrstuvwxyz234567";
 	};
 
 	struct z_base32 {
@@ -23486,6 +24580,7 @@ namespace encoding {
 		static constexpr std::string_view alt_name = "zbase32";
 
 		static constexpr char alphabet[] = "ybndrfg8ejkmcpqxot1uwisza345h769";
+		static constexpr char alt_alphabet[] = "YBNDRFG8EJKMCPQXOT1UWISZA345H769";
 	};
 
 	struct base16 {
@@ -23493,6 +24588,7 @@ namespace encoding {
 		static constexpr std::string_view alt_name = "hexdec";
 
 		static constexpr char alphabet[] = "0123456789abcdef";
+		static constexpr char alt_alphabet[] = "0123456789ABCDEF";
 	};
 
 	using hexdec = base16;
@@ -23502,6 +24598,7 @@ namespace encoding {
 		static constexpr std::string_view alt_name = "HEXDEC";
 
 		static constexpr char alphabet[] = "0123456789ABCDEF";
+		static constexpr char alt_alphabet[] = "0123456789abcdef";
 	};
 
 	using hexdec_uppercase = base16_uppercase;
@@ -23534,6 +24631,35 @@ namespace encoding {
 	using known_encodings = list<base64, base64_no_padding, base64url, base32, base32_no_padding, z_base32, base16, base16_uppercase, base8, base4, base2>;
 
 } // namespace encoding
+
+struct translation_table {
+	static constexpr size_t table_size = 256;
+	uint8_t data[table_size];
+	consteval translation_table() {
+		for (size_t i = 0; i != table_size; ++i) {
+			data[i] = 255u;
+		}
+	}
+	consteval bool insert_alphabet(std::string_view input) {
+		const size_t length = input.size();
+		for (size_t i = 0; i != length; ++i) {
+			const size_t c = static_cast<size_t>(static_cast<unsigned char>(input[i]));
+			data[c] = static_cast<uint8_t>(i);
+		}
+		return true;
+	}
+};
+
+template <typename Encoding> struct decoding_alphabet {
+	static constexpr auto table = [] {
+		translation_table output{};
+		output.insert_alphabet(Encoding::alphabet);
+		if constexpr (requires { Encoding::alt_alphabet; }) {
+			output.insert_alphabet(Encoding::alt_alphabet);
+		}
+		return output;
+	}();
+};
 
 template <typename Defs> struct dynamic_encodings;
 
@@ -23577,7 +24703,11 @@ template <typename... List> struct dynamic_encodings<encoding::list<List...>>: s
 		const auto success = (unsigned(assign_encoding<List>(name, output)) | ... | 0u);
 
 		if (!success) {
+#if __has_feature(cxx_exceptions)
 			throw std::invalid_argument{"unknown encoding name"};
+#else
+			std::abort();
+#endif
 		}
 
 		assert(output.has_value());
@@ -24563,6 +25693,8 @@ template <typename T, typename... Types> concept one_of = (std::same_as<T, Types
 
 template <typename T> concept byte = one_of<std::remove_cvref_t<T>, char, unsigned char, signed char, uint8_t, int8_t, std::byte>;
 
+template <typename T> concept character = one_of<std::remove_cvref_t<T>, char, unsigned char, signed char, char8_t, char16_t, char32_t, wchar_t>;
+
 template <typename Encoding> concept padded_encoding = requires() {
 	{ Encoding::padding } -> cthash::byte;
 };
@@ -25043,6 +26175,8 @@ template <typename T, typename... Types> concept one_of = (std::same_as<T, Types
 
 template <typename T> concept byte = one_of<std::remove_cvref_t<T>, char, unsigned char, signed char, uint8_t, int8_t, std::byte>;
 
+template <typename T> concept character = one_of<std::remove_cvref_t<T>, char, unsigned char, signed char, char8_t, char16_t, char32_t, wchar_t>;
+
 template <typename Encoding> concept padded_encoding = requires() {
 	{ Encoding::padding } -> cthash::byte;
 };
@@ -25091,6 +26225,7 @@ namespace encoding {
 		static constexpr std::string_view name = "base32";
 
 		static constexpr char alphabet[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+		static constexpr char alt_alphabet[] = "abcdefghijklmnopqrstuvwxyz234567";
 		static constexpr char padding = '=';
 	};
 
@@ -25098,6 +26233,7 @@ namespace encoding {
 		static constexpr std::string_view name = "base32_no_padding";
 
 		static constexpr char alphabet[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+		static constexpr char alt_alphabet[] = "abcdefghijklmnopqrstuvwxyz234567";
 	};
 
 	struct z_base32 {
@@ -25105,6 +26241,7 @@ namespace encoding {
 		static constexpr std::string_view alt_name = "zbase32";
 
 		static constexpr char alphabet[] = "ybndrfg8ejkmcpqxot1uwisza345h769";
+		static constexpr char alt_alphabet[] = "YBNDRFG8EJKMCPQXOT1UWISZA345H769";
 	};
 
 	struct base16 {
@@ -25112,6 +26249,7 @@ namespace encoding {
 		static constexpr std::string_view alt_name = "hexdec";
 
 		static constexpr char alphabet[] = "0123456789abcdef";
+		static constexpr char alt_alphabet[] = "0123456789ABCDEF";
 	};
 
 	using hexdec = base16;
@@ -25121,6 +26259,7 @@ namespace encoding {
 		static constexpr std::string_view alt_name = "HEXDEC";
 
 		static constexpr char alphabet[] = "0123456789ABCDEF";
+		static constexpr char alt_alphabet[] = "0123456789abcdef";
 	};
 
 	using hexdec_uppercase = base16_uppercase;
@@ -25153,6 +26292,35 @@ namespace encoding {
 	using known_encodings = list<base64, base64_no_padding, base64url, base32, base32_no_padding, z_base32, base16, base16_uppercase, base8, base4, base2>;
 
 } // namespace encoding
+
+struct translation_table {
+	static constexpr size_t table_size = 256;
+	uint8_t data[table_size];
+	consteval translation_table() {
+		for (size_t i = 0; i != table_size; ++i) {
+			data[i] = 255u;
+		}
+	}
+	consteval bool insert_alphabet(std::string_view input) {
+		const size_t length = input.size();
+		for (size_t i = 0; i != length; ++i) {
+			const size_t c = static_cast<size_t>(static_cast<unsigned char>(input[i]));
+			data[c] = static_cast<uint8_t>(i);
+		}
+		return true;
+	}
+};
+
+template <typename Encoding> struct decoding_alphabet {
+	static constexpr auto table = [] {
+		translation_table output{};
+		output.insert_alphabet(Encoding::alphabet);
+		if constexpr (requires { Encoding::alt_alphabet; }) {
+			output.insert_alphabet(Encoding::alt_alphabet);
+		}
+		return output;
+	}();
+};
 
 template <typename Defs> struct dynamic_encodings;
 
@@ -25196,7 +26364,11 @@ template <typename... List> struct dynamic_encodings<encoding::list<List...>>: s
 		const auto success = (unsigned(assign_encoding<List>(name, output)) | ... | 0u);
 
 		if (!success) {
+#if __has_feature(cxx_exceptions)
 			throw std::invalid_argument{"unknown encoding name"};
+#else
+			std::abort();
+#endif
 		}
 
 		assert(output.has_value());
@@ -25367,7 +26539,10 @@ template <typename Encoding, typename CharT, typename R> struct encode_to_view {
 	}
 };
 
-template <typename Encoding, typename ValueT, typename R> struct decode_from_view {
+template <typename Encoding, typename R> struct decode_from_view {
+	using table = decoding_alphabet<Encoding>;
+	using input_value_type = std::ranges::range_value_t<R>;
+
 	R input;
 
 	template <bool Const> struct iterator { };
@@ -25401,44 +26576,61 @@ template <typename Encoding, typename CharT = char> struct encode_to_action {
 	}
 };
 
-template <typename Encoding, typename ValueT = unsigned char> struct decode_from_action {
-	template <std::ranges::input_range R> constexpr friend auto operator|(R && input, decode_from_action action) {
+template <typename Encoding> struct decode_from_action {
+	template <std::ranges::input_range R> constexpr friend auto operator|(R && input, decode_from_action action) requires(character<std::ranges::range_value_t<R>>) {
 		return action.operator()<R>(std::forward<R>(input));
 	}
-	template <std::ranges::input_range R> constexpr auto operator()(R && input) const {
-		return decode_from_view<Encoding, ValueT, R>(std::forward<R>(input));
+	template <std::ranges::input_range R> constexpr auto operator()(R && input) const requires(character<std::ranges::range_value_t<R>>) {
+		return decode_from_view<Encoding, R>(std::forward<R>(input));
 	}
 };
 
 template <typename Encoding, typename CharT = char> constexpr auto encode_to = encode_to_action<Encoding, CharT>{};
-template <typename Encoding, typename ValueT = unsigned char> constexpr auto decode_from = decode_from_action<Encoding, ValueT>{};
+template <typename Encoding> constexpr auto decode_from = decode_from_action<Encoding>{};
 
-constexpr auto binary_encode = encode_to<encoding::base2, char>;
-constexpr auto base2_encode = encode_to<encoding::base2, char>;
-constexpr auto base4_encode = encode_to<encoding::base4, char>;
-constexpr auto base8_encode = encode_to<encoding::base8, char>;
-constexpr auto octal_encode = encode_to<encoding::base8, char>;
-constexpr auto hexdec_encode = encode_to<encoding::base16, char>;
-constexpr auto hexdec_uppercase_encode = encode_to<encoding::base16_uppercase, char>;
-constexpr auto base16_encode = encode_to<encoding::base16, char>;
-constexpr auto base32_encode = encode_to<encoding::base32, char>;
-constexpr auto base32_no_padding_encode = encode_to<encoding::base32_no_padding, char>;
-constexpr auto z_base32_encode = encode_to<encoding::z_base32, char>;
-constexpr auto base64_encode = encode_to<encoding::base64, char>;
-constexpr auto base64url_encode = encode_to<encoding::base64url, char>;
-constexpr auto base64_no_padding_encode = encode_to<encoding::base64_no_padding, char>;
+// encoding interface
+template <typename CharT = char> constexpr auto binary_encode_to = encode_to<encoding::base2, CharT>;
+template <typename CharT = char> constexpr auto base2_encode_to = encode_to<encoding::base2, CharT>;
+template <typename CharT = char> constexpr auto base4_encode_to = encode_to<encoding::base4, CharT>;
+template <typename CharT = char> constexpr auto base8_encode_to = encode_to<encoding::base8, CharT>;
+template <typename CharT = char> constexpr auto octal_encode_to = encode_to<encoding::base8, CharT>;
+template <typename CharT = char> constexpr auto hexdec_encode_to = encode_to<encoding::base16, CharT>;
+template <typename CharT = char> constexpr auto hexdec_uppercase_encode_to = encode_to<encoding::base16_uppercase, CharT>;
+template <typename CharT = char> constexpr auto base16_encode_to = encode_to<encoding::base16, CharT>;
+template <typename CharT = char> constexpr auto base32_encode_to = encode_to<encoding::base32, CharT>;
+template <typename CharT = char> constexpr auto base32_no_padding_encode_to = encode_to<encoding::base32_no_padding, CharT>;
+template <typename CharT = char> constexpr auto z_base32_encode_to = encode_to<encoding::z_base32, CharT>;
+template <typename CharT = char> constexpr auto base64_encode_to = encode_to<encoding::base64, CharT>;
+template <typename CharT = char> constexpr auto base64url_encode_to = encode_to<encoding::base64url, CharT>;
+template <typename CharT = char> constexpr auto base64_no_padding_encode_to = encode_to<encoding::base64_no_padding, CharT>;
 
-constexpr auto binary_decode = decode_from<encoding::base2, char>;
-constexpr auto base2_decode = decode_from<encoding::base2, char>;
-constexpr auto base4_decode = decode_from<encoding::base4, char>;
-constexpr auto base8_decode = decode_from<encoding::base8, char>;
-constexpr auto hexdec_decode = decode_from<encoding::base16, char>;
-constexpr auto base16_decode = decode_from<encoding::base16, char>;
-constexpr auto base32_decode = decode_from<encoding::base32, char>;
-constexpr auto z_base32_decode = decode_from<encoding::z_base32, char>;
-constexpr auto base64_decode = decode_from<encoding::base64, char>;
-constexpr auto base64url_decode = decode_from<encoding::base64url, char>;
-constexpr auto base64_no_padding_decode = decode_from<encoding::base64_no_padding, char>;
+constexpr auto binary_encode = binary_encode_to<char>;
+constexpr auto base2_encode = base2_encode_to<char>;
+constexpr auto base4_encode = base4_encode_to<char>;
+constexpr auto base8_encode = base8_encode_to<char>;
+constexpr auto octal_encode = octal_encode_to<char>;
+constexpr auto hexdec_encode = hexdec_encode_to<char>;
+constexpr auto hexdec_uppercase_encode = hexdec_uppercase_encode_to<char>;
+constexpr auto base16_encode = base16_encode_to<char>;
+constexpr auto base32_encode = base32_encode_to<char>;
+constexpr auto base32_no_padding_encode = base32_no_padding_encode_to<char>;
+constexpr auto z_base32_encode = z_base32_encode_to<char>;
+constexpr auto base64_encode = base64_encode_to<char>;
+constexpr auto base64url_encode = base64url_encode_to<char>;
+constexpr auto base64_no_padding_encode = base64_no_padding_encode_to<char>;
+
+// decoding
+constexpr auto binary_decode = decode_from<encoding::base2>;
+constexpr auto base2_decode = decode_from<encoding::base2>;
+constexpr auto base4_decode = decode_from<encoding::base4>;
+constexpr auto base8_decode = decode_from<encoding::base8>;
+constexpr auto hexdec_decode = decode_from<encoding::base16>;
+constexpr auto base16_decode = decode_from<encoding::base16>;
+constexpr auto base32_decode = decode_from<encoding::base32>;
+constexpr auto z_base32_decode = decode_from<encoding::z_base32>;
+constexpr auto base64_decode = decode_from<encoding::base64>;
+constexpr auto base64url_decode = decode_from<encoding::base64url>;
+constexpr auto base64_no_padding_decode = decode_from<encoding::base64_no_padding>;
 
 } // namespace cthash
 
@@ -25489,6 +26681,8 @@ template <typename T, typename... Types> concept one_of = (std::same_as<T, Types
 
 template <typename T> concept byte = one_of<std::remove_cvref_t<T>, char, unsigned char, signed char, uint8_t, int8_t, std::byte>;
 
+template <typename T> concept character = one_of<std::remove_cvref_t<T>, char, unsigned char, signed char, char8_t, char16_t, char32_t, wchar_t>;
+
 template <typename Encoding> concept padded_encoding = requires() {
 	{ Encoding::padding } -> cthash::byte;
 };
@@ -25537,6 +26731,7 @@ namespace encoding {
 		static constexpr std::string_view name = "base32";
 
 		static constexpr char alphabet[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+		static constexpr char alt_alphabet[] = "abcdefghijklmnopqrstuvwxyz234567";
 		static constexpr char padding = '=';
 	};
 
@@ -25544,6 +26739,7 @@ namespace encoding {
 		static constexpr std::string_view name = "base32_no_padding";
 
 		static constexpr char alphabet[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+		static constexpr char alt_alphabet[] = "abcdefghijklmnopqrstuvwxyz234567";
 	};
 
 	struct z_base32 {
@@ -25551,6 +26747,7 @@ namespace encoding {
 		static constexpr std::string_view alt_name = "zbase32";
 
 		static constexpr char alphabet[] = "ybndrfg8ejkmcpqxot1uwisza345h769";
+		static constexpr char alt_alphabet[] = "YBNDRFG8EJKMCPQXOT1UWISZA345H769";
 	};
 
 	struct base16 {
@@ -25558,6 +26755,7 @@ namespace encoding {
 		static constexpr std::string_view alt_name = "hexdec";
 
 		static constexpr char alphabet[] = "0123456789abcdef";
+		static constexpr char alt_alphabet[] = "0123456789ABCDEF";
 	};
 
 	using hexdec = base16;
@@ -25567,6 +26765,7 @@ namespace encoding {
 		static constexpr std::string_view alt_name = "HEXDEC";
 
 		static constexpr char alphabet[] = "0123456789ABCDEF";
+		static constexpr char alt_alphabet[] = "0123456789abcdef";
 	};
 
 	using hexdec_uppercase = base16_uppercase;
@@ -25599,6 +26798,35 @@ namespace encoding {
 	using known_encodings = list<base64, base64_no_padding, base64url, base32, base32_no_padding, z_base32, base16, base16_uppercase, base8, base4, base2>;
 
 } // namespace encoding
+
+struct translation_table {
+	static constexpr size_t table_size = 256;
+	uint8_t data[table_size];
+	consteval translation_table() {
+		for (size_t i = 0; i != table_size; ++i) {
+			data[i] = 255u;
+		}
+	}
+	consteval bool insert_alphabet(std::string_view input) {
+		const size_t length = input.size();
+		for (size_t i = 0; i != length; ++i) {
+			const size_t c = static_cast<size_t>(static_cast<unsigned char>(input[i]));
+			data[c] = static_cast<uint8_t>(i);
+		}
+		return true;
+	}
+};
+
+template <typename Encoding> struct decoding_alphabet {
+	static constexpr auto table = [] {
+		translation_table output{};
+		output.insert_alphabet(Encoding::alphabet);
+		if constexpr (requires { Encoding::alt_alphabet; }) {
+			output.insert_alphabet(Encoding::alt_alphabet);
+		}
+		return output;
+	}();
+};
 
 template <typename Defs> struct dynamic_encodings;
 
@@ -25642,7 +26870,11 @@ template <typename... List> struct dynamic_encodings<encoding::list<List...>>: s
 		const auto success = (unsigned(assign_encoding<List>(name, output)) | ... | 0u);
 
 		if (!success) {
+#if __has_feature(cxx_exceptions)
 			throw std::invalid_argument{"unknown encoding name"};
+#else
+			std::abort();
+#endif
 		}
 
 		assert(output.has_value());
@@ -26848,6 +28080,8 @@ template <typename T, typename... Types> concept one_of = (std::same_as<T, Types
 
 template <typename T> concept byte = one_of<std::remove_cvref_t<T>, char, unsigned char, signed char, uint8_t, int8_t, std::byte>;
 
+template <typename T> concept character = one_of<std::remove_cvref_t<T>, char, unsigned char, signed char, char8_t, char16_t, char32_t, wchar_t>;
+
 template <typename Encoding> concept padded_encoding = requires() {
 	{ Encoding::padding } -> cthash::byte;
 };
@@ -27328,6 +28562,8 @@ template <typename T, typename... Types> concept one_of = (std::same_as<T, Types
 
 template <typename T> concept byte = one_of<std::remove_cvref_t<T>, char, unsigned char, signed char, uint8_t, int8_t, std::byte>;
 
+template <typename T> concept character = one_of<std::remove_cvref_t<T>, char, unsigned char, signed char, char8_t, char16_t, char32_t, wchar_t>;
+
 template <typename Encoding> concept padded_encoding = requires() {
 	{ Encoding::padding } -> cthash::byte;
 };
@@ -27376,6 +28612,7 @@ namespace encoding {
 		static constexpr std::string_view name = "base32";
 
 		static constexpr char alphabet[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+		static constexpr char alt_alphabet[] = "abcdefghijklmnopqrstuvwxyz234567";
 		static constexpr char padding = '=';
 	};
 
@@ -27383,6 +28620,7 @@ namespace encoding {
 		static constexpr std::string_view name = "base32_no_padding";
 
 		static constexpr char alphabet[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+		static constexpr char alt_alphabet[] = "abcdefghijklmnopqrstuvwxyz234567";
 	};
 
 	struct z_base32 {
@@ -27390,6 +28628,7 @@ namespace encoding {
 		static constexpr std::string_view alt_name = "zbase32";
 
 		static constexpr char alphabet[] = "ybndrfg8ejkmcpqxot1uwisza345h769";
+		static constexpr char alt_alphabet[] = "YBNDRFG8EJKMCPQXOT1UWISZA345H769";
 	};
 
 	struct base16 {
@@ -27397,6 +28636,7 @@ namespace encoding {
 		static constexpr std::string_view alt_name = "hexdec";
 
 		static constexpr char alphabet[] = "0123456789abcdef";
+		static constexpr char alt_alphabet[] = "0123456789ABCDEF";
 	};
 
 	using hexdec = base16;
@@ -27406,6 +28646,7 @@ namespace encoding {
 		static constexpr std::string_view alt_name = "HEXDEC";
 
 		static constexpr char alphabet[] = "0123456789ABCDEF";
+		static constexpr char alt_alphabet[] = "0123456789abcdef";
 	};
 
 	using hexdec_uppercase = base16_uppercase;
@@ -27438,6 +28679,35 @@ namespace encoding {
 	using known_encodings = list<base64, base64_no_padding, base64url, base32, base32_no_padding, z_base32, base16, base16_uppercase, base8, base4, base2>;
 
 } // namespace encoding
+
+struct translation_table {
+	static constexpr size_t table_size = 256;
+	uint8_t data[table_size];
+	consteval translation_table() {
+		for (size_t i = 0; i != table_size; ++i) {
+			data[i] = 255u;
+		}
+	}
+	consteval bool insert_alphabet(std::string_view input) {
+		const size_t length = input.size();
+		for (size_t i = 0; i != length; ++i) {
+			const size_t c = static_cast<size_t>(static_cast<unsigned char>(input[i]));
+			data[c] = static_cast<uint8_t>(i);
+		}
+		return true;
+	}
+};
+
+template <typename Encoding> struct decoding_alphabet {
+	static constexpr auto table = [] {
+		translation_table output{};
+		output.insert_alphabet(Encoding::alphabet);
+		if constexpr (requires { Encoding::alt_alphabet; }) {
+			output.insert_alphabet(Encoding::alt_alphabet);
+		}
+		return output;
+	}();
+};
 
 template <typename Defs> struct dynamic_encodings;
 
@@ -27481,7 +28751,11 @@ template <typename... List> struct dynamic_encodings<encoding::list<List...>>: s
 		const auto success = (unsigned(assign_encoding<List>(name, output)) | ... | 0u);
 
 		if (!success) {
+#if __has_feature(cxx_exceptions)
 			throw std::invalid_argument{"unknown encoding name"};
+#else
+			std::abort();
+#endif
 		}
 
 		assert(output.has_value());
@@ -27652,7 +28926,10 @@ template <typename Encoding, typename CharT, typename R> struct encode_to_view {
 	}
 };
 
-template <typename Encoding, typename ValueT, typename R> struct decode_from_view {
+template <typename Encoding, typename R> struct decode_from_view {
+	using table = decoding_alphabet<Encoding>;
+	using input_value_type = std::ranges::range_value_t<R>;
+
 	R input;
 
 	template <bool Const> struct iterator { };
@@ -27686,44 +28963,61 @@ template <typename Encoding, typename CharT = char> struct encode_to_action {
 	}
 };
 
-template <typename Encoding, typename ValueT = unsigned char> struct decode_from_action {
-	template <std::ranges::input_range R> constexpr friend auto operator|(R && input, decode_from_action action) {
+template <typename Encoding> struct decode_from_action {
+	template <std::ranges::input_range R> constexpr friend auto operator|(R && input, decode_from_action action) requires(character<std::ranges::range_value_t<R>>) {
 		return action.operator()<R>(std::forward<R>(input));
 	}
-	template <std::ranges::input_range R> constexpr auto operator()(R && input) const {
-		return decode_from_view<Encoding, ValueT, R>(std::forward<R>(input));
+	template <std::ranges::input_range R> constexpr auto operator()(R && input) const requires(character<std::ranges::range_value_t<R>>) {
+		return decode_from_view<Encoding, R>(std::forward<R>(input));
 	}
 };
 
 template <typename Encoding, typename CharT = char> constexpr auto encode_to = encode_to_action<Encoding, CharT>{};
-template <typename Encoding, typename ValueT = unsigned char> constexpr auto decode_from = decode_from_action<Encoding, ValueT>{};
+template <typename Encoding> constexpr auto decode_from = decode_from_action<Encoding>{};
 
-constexpr auto binary_encode = encode_to<encoding::base2, char>;
-constexpr auto base2_encode = encode_to<encoding::base2, char>;
-constexpr auto base4_encode = encode_to<encoding::base4, char>;
-constexpr auto base8_encode = encode_to<encoding::base8, char>;
-constexpr auto octal_encode = encode_to<encoding::base8, char>;
-constexpr auto hexdec_encode = encode_to<encoding::base16, char>;
-constexpr auto hexdec_uppercase_encode = encode_to<encoding::base16_uppercase, char>;
-constexpr auto base16_encode = encode_to<encoding::base16, char>;
-constexpr auto base32_encode = encode_to<encoding::base32, char>;
-constexpr auto base32_no_padding_encode = encode_to<encoding::base32_no_padding, char>;
-constexpr auto z_base32_encode = encode_to<encoding::z_base32, char>;
-constexpr auto base64_encode = encode_to<encoding::base64, char>;
-constexpr auto base64url_encode = encode_to<encoding::base64url, char>;
-constexpr auto base64_no_padding_encode = encode_to<encoding::base64_no_padding, char>;
+// encoding interface
+template <typename CharT = char> constexpr auto binary_encode_to = encode_to<encoding::base2, CharT>;
+template <typename CharT = char> constexpr auto base2_encode_to = encode_to<encoding::base2, CharT>;
+template <typename CharT = char> constexpr auto base4_encode_to = encode_to<encoding::base4, CharT>;
+template <typename CharT = char> constexpr auto base8_encode_to = encode_to<encoding::base8, CharT>;
+template <typename CharT = char> constexpr auto octal_encode_to = encode_to<encoding::base8, CharT>;
+template <typename CharT = char> constexpr auto hexdec_encode_to = encode_to<encoding::base16, CharT>;
+template <typename CharT = char> constexpr auto hexdec_uppercase_encode_to = encode_to<encoding::base16_uppercase, CharT>;
+template <typename CharT = char> constexpr auto base16_encode_to = encode_to<encoding::base16, CharT>;
+template <typename CharT = char> constexpr auto base32_encode_to = encode_to<encoding::base32, CharT>;
+template <typename CharT = char> constexpr auto base32_no_padding_encode_to = encode_to<encoding::base32_no_padding, CharT>;
+template <typename CharT = char> constexpr auto z_base32_encode_to = encode_to<encoding::z_base32, CharT>;
+template <typename CharT = char> constexpr auto base64_encode_to = encode_to<encoding::base64, CharT>;
+template <typename CharT = char> constexpr auto base64url_encode_to = encode_to<encoding::base64url, CharT>;
+template <typename CharT = char> constexpr auto base64_no_padding_encode_to = encode_to<encoding::base64_no_padding, CharT>;
 
-constexpr auto binary_decode = decode_from<encoding::base2, char>;
-constexpr auto base2_decode = decode_from<encoding::base2, char>;
-constexpr auto base4_decode = decode_from<encoding::base4, char>;
-constexpr auto base8_decode = decode_from<encoding::base8, char>;
-constexpr auto hexdec_decode = decode_from<encoding::base16, char>;
-constexpr auto base16_decode = decode_from<encoding::base16, char>;
-constexpr auto base32_decode = decode_from<encoding::base32, char>;
-constexpr auto z_base32_decode = decode_from<encoding::z_base32, char>;
-constexpr auto base64_decode = decode_from<encoding::base64, char>;
-constexpr auto base64url_decode = decode_from<encoding::base64url, char>;
-constexpr auto base64_no_padding_decode = decode_from<encoding::base64_no_padding, char>;
+constexpr auto binary_encode = binary_encode_to<char>;
+constexpr auto base2_encode = base2_encode_to<char>;
+constexpr auto base4_encode = base4_encode_to<char>;
+constexpr auto base8_encode = base8_encode_to<char>;
+constexpr auto octal_encode = octal_encode_to<char>;
+constexpr auto hexdec_encode = hexdec_encode_to<char>;
+constexpr auto hexdec_uppercase_encode = hexdec_uppercase_encode_to<char>;
+constexpr auto base16_encode = base16_encode_to<char>;
+constexpr auto base32_encode = base32_encode_to<char>;
+constexpr auto base32_no_padding_encode = base32_no_padding_encode_to<char>;
+constexpr auto z_base32_encode = z_base32_encode_to<char>;
+constexpr auto base64_encode = base64_encode_to<char>;
+constexpr auto base64url_encode = base64url_encode_to<char>;
+constexpr auto base64_no_padding_encode = base64_no_padding_encode_to<char>;
+
+// decoding
+constexpr auto binary_decode = decode_from<encoding::base2>;
+constexpr auto base2_decode = decode_from<encoding::base2>;
+constexpr auto base4_decode = decode_from<encoding::base4>;
+constexpr auto base8_decode = decode_from<encoding::base8>;
+constexpr auto hexdec_decode = decode_from<encoding::base16>;
+constexpr auto base16_decode = decode_from<encoding::base16>;
+constexpr auto base32_decode = decode_from<encoding::base32>;
+constexpr auto z_base32_decode = decode_from<encoding::z_base32>;
+constexpr auto base64_decode = decode_from<encoding::base64>;
+constexpr auto base64url_decode = decode_from<encoding::base64url>;
+constexpr auto base64_no_padding_decode = decode_from<encoding::base64_no_padding>;
 
 } // namespace cthash
 
@@ -27774,6 +29068,8 @@ template <typename T, typename... Types> concept one_of = (std::same_as<T, Types
 
 template <typename T> concept byte = one_of<std::remove_cvref_t<T>, char, unsigned char, signed char, uint8_t, int8_t, std::byte>;
 
+template <typename T> concept character = one_of<std::remove_cvref_t<T>, char, unsigned char, signed char, char8_t, char16_t, char32_t, wchar_t>;
+
 template <typename Encoding> concept padded_encoding = requires() {
 	{ Encoding::padding } -> cthash::byte;
 };
@@ -27822,6 +29118,7 @@ namespace encoding {
 		static constexpr std::string_view name = "base32";
 
 		static constexpr char alphabet[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+		static constexpr char alt_alphabet[] = "abcdefghijklmnopqrstuvwxyz234567";
 		static constexpr char padding = '=';
 	};
 
@@ -27829,6 +29126,7 @@ namespace encoding {
 		static constexpr std::string_view name = "base32_no_padding";
 
 		static constexpr char alphabet[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+		static constexpr char alt_alphabet[] = "abcdefghijklmnopqrstuvwxyz234567";
 	};
 
 	struct z_base32 {
@@ -27836,6 +29134,7 @@ namespace encoding {
 		static constexpr std::string_view alt_name = "zbase32";
 
 		static constexpr char alphabet[] = "ybndrfg8ejkmcpqxot1uwisza345h769";
+		static constexpr char alt_alphabet[] = "YBNDRFG8EJKMCPQXOT1UWISZA345H769";
 	};
 
 	struct base16 {
@@ -27843,6 +29142,7 @@ namespace encoding {
 		static constexpr std::string_view alt_name = "hexdec";
 
 		static constexpr char alphabet[] = "0123456789abcdef";
+		static constexpr char alt_alphabet[] = "0123456789ABCDEF";
 	};
 
 	using hexdec = base16;
@@ -27852,6 +29152,7 @@ namespace encoding {
 		static constexpr std::string_view alt_name = "HEXDEC";
 
 		static constexpr char alphabet[] = "0123456789ABCDEF";
+		static constexpr char alt_alphabet[] = "0123456789abcdef";
 	};
 
 	using hexdec_uppercase = base16_uppercase;
@@ -27884,6 +29185,35 @@ namespace encoding {
 	using known_encodings = list<base64, base64_no_padding, base64url, base32, base32_no_padding, z_base32, base16, base16_uppercase, base8, base4, base2>;
 
 } // namespace encoding
+
+struct translation_table {
+	static constexpr size_t table_size = 256;
+	uint8_t data[table_size];
+	consteval translation_table() {
+		for (size_t i = 0; i != table_size; ++i) {
+			data[i] = 255u;
+		}
+	}
+	consteval bool insert_alphabet(std::string_view input) {
+		const size_t length = input.size();
+		for (size_t i = 0; i != length; ++i) {
+			const size_t c = static_cast<size_t>(static_cast<unsigned char>(input[i]));
+			data[c] = static_cast<uint8_t>(i);
+		}
+		return true;
+	}
+};
+
+template <typename Encoding> struct decoding_alphabet {
+	static constexpr auto table = [] {
+		translation_table output{};
+		output.insert_alphabet(Encoding::alphabet);
+		if constexpr (requires { Encoding::alt_alphabet; }) {
+			output.insert_alphabet(Encoding::alt_alphabet);
+		}
+		return output;
+	}();
+};
 
 template <typename Defs> struct dynamic_encodings;
 
@@ -27927,7 +29257,11 @@ template <typename... List> struct dynamic_encodings<encoding::list<List...>>: s
 		const auto success = (unsigned(assign_encoding<List>(name, output)) | ... | 0u);
 
 		if (!success) {
+#if __has_feature(cxx_exceptions)
 			throw std::invalid_argument{"unknown encoding name"};
+#else
+			std::abort();
+#endif
 		}
 
 		assert(output.has_value());
@@ -28815,6 +30149,8 @@ template <typename T, typename... Types> concept one_of = (std::same_as<T, Types
 
 template <typename T> concept byte = one_of<std::remove_cvref_t<T>, char, unsigned char, signed char, uint8_t, int8_t, std::byte>;
 
+template <typename T> concept character = one_of<std::remove_cvref_t<T>, char, unsigned char, signed char, char8_t, char16_t, char32_t, wchar_t>;
+
 template <typename Encoding> concept padded_encoding = requires() {
 	{ Encoding::padding } -> cthash::byte;
 };
@@ -29295,6 +30631,8 @@ template <typename T, typename... Types> concept one_of = (std::same_as<T, Types
 
 template <typename T> concept byte = one_of<std::remove_cvref_t<T>, char, unsigned char, signed char, uint8_t, int8_t, std::byte>;
 
+template <typename T> concept character = one_of<std::remove_cvref_t<T>, char, unsigned char, signed char, char8_t, char16_t, char32_t, wchar_t>;
+
 template <typename Encoding> concept padded_encoding = requires() {
 	{ Encoding::padding } -> cthash::byte;
 };
@@ -29343,6 +30681,7 @@ namespace encoding {
 		static constexpr std::string_view name = "base32";
 
 		static constexpr char alphabet[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+		static constexpr char alt_alphabet[] = "abcdefghijklmnopqrstuvwxyz234567";
 		static constexpr char padding = '=';
 	};
 
@@ -29350,6 +30689,7 @@ namespace encoding {
 		static constexpr std::string_view name = "base32_no_padding";
 
 		static constexpr char alphabet[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+		static constexpr char alt_alphabet[] = "abcdefghijklmnopqrstuvwxyz234567";
 	};
 
 	struct z_base32 {
@@ -29357,6 +30697,7 @@ namespace encoding {
 		static constexpr std::string_view alt_name = "zbase32";
 
 		static constexpr char alphabet[] = "ybndrfg8ejkmcpqxot1uwisza345h769";
+		static constexpr char alt_alphabet[] = "YBNDRFG8EJKMCPQXOT1UWISZA345H769";
 	};
 
 	struct base16 {
@@ -29364,6 +30705,7 @@ namespace encoding {
 		static constexpr std::string_view alt_name = "hexdec";
 
 		static constexpr char alphabet[] = "0123456789abcdef";
+		static constexpr char alt_alphabet[] = "0123456789ABCDEF";
 	};
 
 	using hexdec = base16;
@@ -29373,6 +30715,7 @@ namespace encoding {
 		static constexpr std::string_view alt_name = "HEXDEC";
 
 		static constexpr char alphabet[] = "0123456789ABCDEF";
+		static constexpr char alt_alphabet[] = "0123456789abcdef";
 	};
 
 	using hexdec_uppercase = base16_uppercase;
@@ -29405,6 +30748,35 @@ namespace encoding {
 	using known_encodings = list<base64, base64_no_padding, base64url, base32, base32_no_padding, z_base32, base16, base16_uppercase, base8, base4, base2>;
 
 } // namespace encoding
+
+struct translation_table {
+	static constexpr size_t table_size = 256;
+	uint8_t data[table_size];
+	consteval translation_table() {
+		for (size_t i = 0; i != table_size; ++i) {
+			data[i] = 255u;
+		}
+	}
+	consteval bool insert_alphabet(std::string_view input) {
+		const size_t length = input.size();
+		for (size_t i = 0; i != length; ++i) {
+			const size_t c = static_cast<size_t>(static_cast<unsigned char>(input[i]));
+			data[c] = static_cast<uint8_t>(i);
+		}
+		return true;
+	}
+};
+
+template <typename Encoding> struct decoding_alphabet {
+	static constexpr auto table = [] {
+		translation_table output{};
+		output.insert_alphabet(Encoding::alphabet);
+		if constexpr (requires { Encoding::alt_alphabet; }) {
+			output.insert_alphabet(Encoding::alt_alphabet);
+		}
+		return output;
+	}();
+};
 
 template <typename Defs> struct dynamic_encodings;
 
@@ -29448,7 +30820,11 @@ template <typename... List> struct dynamic_encodings<encoding::list<List...>>: s
 		const auto success = (unsigned(assign_encoding<List>(name, output)) | ... | 0u);
 
 		if (!success) {
+#if __has_feature(cxx_exceptions)
 			throw std::invalid_argument{"unknown encoding name"};
+#else
+			std::abort();
+#endif
 		}
 
 		assert(output.has_value());
@@ -29619,7 +30995,10 @@ template <typename Encoding, typename CharT, typename R> struct encode_to_view {
 	}
 };
 
-template <typename Encoding, typename ValueT, typename R> struct decode_from_view {
+template <typename Encoding, typename R> struct decode_from_view {
+	using table = decoding_alphabet<Encoding>;
+	using input_value_type = std::ranges::range_value_t<R>;
+
 	R input;
 
 	template <bool Const> struct iterator { };
@@ -29653,44 +31032,61 @@ template <typename Encoding, typename CharT = char> struct encode_to_action {
 	}
 };
 
-template <typename Encoding, typename ValueT = unsigned char> struct decode_from_action {
-	template <std::ranges::input_range R> constexpr friend auto operator|(R && input, decode_from_action action) {
+template <typename Encoding> struct decode_from_action {
+	template <std::ranges::input_range R> constexpr friend auto operator|(R && input, decode_from_action action) requires(character<std::ranges::range_value_t<R>>) {
 		return action.operator()<R>(std::forward<R>(input));
 	}
-	template <std::ranges::input_range R> constexpr auto operator()(R && input) const {
-		return decode_from_view<Encoding, ValueT, R>(std::forward<R>(input));
+	template <std::ranges::input_range R> constexpr auto operator()(R && input) const requires(character<std::ranges::range_value_t<R>>) {
+		return decode_from_view<Encoding, R>(std::forward<R>(input));
 	}
 };
 
 template <typename Encoding, typename CharT = char> constexpr auto encode_to = encode_to_action<Encoding, CharT>{};
-template <typename Encoding, typename ValueT = unsigned char> constexpr auto decode_from = decode_from_action<Encoding, ValueT>{};
+template <typename Encoding> constexpr auto decode_from = decode_from_action<Encoding>{};
 
-constexpr auto binary_encode = encode_to<encoding::base2, char>;
-constexpr auto base2_encode = encode_to<encoding::base2, char>;
-constexpr auto base4_encode = encode_to<encoding::base4, char>;
-constexpr auto base8_encode = encode_to<encoding::base8, char>;
-constexpr auto octal_encode = encode_to<encoding::base8, char>;
-constexpr auto hexdec_encode = encode_to<encoding::base16, char>;
-constexpr auto hexdec_uppercase_encode = encode_to<encoding::base16_uppercase, char>;
-constexpr auto base16_encode = encode_to<encoding::base16, char>;
-constexpr auto base32_encode = encode_to<encoding::base32, char>;
-constexpr auto base32_no_padding_encode = encode_to<encoding::base32_no_padding, char>;
-constexpr auto z_base32_encode = encode_to<encoding::z_base32, char>;
-constexpr auto base64_encode = encode_to<encoding::base64, char>;
-constexpr auto base64url_encode = encode_to<encoding::base64url, char>;
-constexpr auto base64_no_padding_encode = encode_to<encoding::base64_no_padding, char>;
+// encoding interface
+template <typename CharT = char> constexpr auto binary_encode_to = encode_to<encoding::base2, CharT>;
+template <typename CharT = char> constexpr auto base2_encode_to = encode_to<encoding::base2, CharT>;
+template <typename CharT = char> constexpr auto base4_encode_to = encode_to<encoding::base4, CharT>;
+template <typename CharT = char> constexpr auto base8_encode_to = encode_to<encoding::base8, CharT>;
+template <typename CharT = char> constexpr auto octal_encode_to = encode_to<encoding::base8, CharT>;
+template <typename CharT = char> constexpr auto hexdec_encode_to = encode_to<encoding::base16, CharT>;
+template <typename CharT = char> constexpr auto hexdec_uppercase_encode_to = encode_to<encoding::base16_uppercase, CharT>;
+template <typename CharT = char> constexpr auto base16_encode_to = encode_to<encoding::base16, CharT>;
+template <typename CharT = char> constexpr auto base32_encode_to = encode_to<encoding::base32, CharT>;
+template <typename CharT = char> constexpr auto base32_no_padding_encode_to = encode_to<encoding::base32_no_padding, CharT>;
+template <typename CharT = char> constexpr auto z_base32_encode_to = encode_to<encoding::z_base32, CharT>;
+template <typename CharT = char> constexpr auto base64_encode_to = encode_to<encoding::base64, CharT>;
+template <typename CharT = char> constexpr auto base64url_encode_to = encode_to<encoding::base64url, CharT>;
+template <typename CharT = char> constexpr auto base64_no_padding_encode_to = encode_to<encoding::base64_no_padding, CharT>;
 
-constexpr auto binary_decode = decode_from<encoding::base2, char>;
-constexpr auto base2_decode = decode_from<encoding::base2, char>;
-constexpr auto base4_decode = decode_from<encoding::base4, char>;
-constexpr auto base8_decode = decode_from<encoding::base8, char>;
-constexpr auto hexdec_decode = decode_from<encoding::base16, char>;
-constexpr auto base16_decode = decode_from<encoding::base16, char>;
-constexpr auto base32_decode = decode_from<encoding::base32, char>;
-constexpr auto z_base32_decode = decode_from<encoding::z_base32, char>;
-constexpr auto base64_decode = decode_from<encoding::base64, char>;
-constexpr auto base64url_decode = decode_from<encoding::base64url, char>;
-constexpr auto base64_no_padding_decode = decode_from<encoding::base64_no_padding, char>;
+constexpr auto binary_encode = binary_encode_to<char>;
+constexpr auto base2_encode = base2_encode_to<char>;
+constexpr auto base4_encode = base4_encode_to<char>;
+constexpr auto base8_encode = base8_encode_to<char>;
+constexpr auto octal_encode = octal_encode_to<char>;
+constexpr auto hexdec_encode = hexdec_encode_to<char>;
+constexpr auto hexdec_uppercase_encode = hexdec_uppercase_encode_to<char>;
+constexpr auto base16_encode = base16_encode_to<char>;
+constexpr auto base32_encode = base32_encode_to<char>;
+constexpr auto base32_no_padding_encode = base32_no_padding_encode_to<char>;
+constexpr auto z_base32_encode = z_base32_encode_to<char>;
+constexpr auto base64_encode = base64_encode_to<char>;
+constexpr auto base64url_encode = base64url_encode_to<char>;
+constexpr auto base64_no_padding_encode = base64_no_padding_encode_to<char>;
+
+// decoding
+constexpr auto binary_decode = decode_from<encoding::base2>;
+constexpr auto base2_decode = decode_from<encoding::base2>;
+constexpr auto base4_decode = decode_from<encoding::base4>;
+constexpr auto base8_decode = decode_from<encoding::base8>;
+constexpr auto hexdec_decode = decode_from<encoding::base16>;
+constexpr auto base16_decode = decode_from<encoding::base16>;
+constexpr auto base32_decode = decode_from<encoding::base32>;
+constexpr auto z_base32_decode = decode_from<encoding::z_base32>;
+constexpr auto base64_decode = decode_from<encoding::base64>;
+constexpr auto base64url_decode = decode_from<encoding::base64url>;
+constexpr auto base64_no_padding_decode = decode_from<encoding::base64_no_padding>;
 
 } // namespace cthash
 
@@ -29741,6 +31137,8 @@ template <typename T, typename... Types> concept one_of = (std::same_as<T, Types
 
 template <typename T> concept byte = one_of<std::remove_cvref_t<T>, char, unsigned char, signed char, uint8_t, int8_t, std::byte>;
 
+template <typename T> concept character = one_of<std::remove_cvref_t<T>, char, unsigned char, signed char, char8_t, char16_t, char32_t, wchar_t>;
+
 template <typename Encoding> concept padded_encoding = requires() {
 	{ Encoding::padding } -> cthash::byte;
 };
@@ -29789,6 +31187,7 @@ namespace encoding {
 		static constexpr std::string_view name = "base32";
 
 		static constexpr char alphabet[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+		static constexpr char alt_alphabet[] = "abcdefghijklmnopqrstuvwxyz234567";
 		static constexpr char padding = '=';
 	};
 
@@ -29796,6 +31195,7 @@ namespace encoding {
 		static constexpr std::string_view name = "base32_no_padding";
 
 		static constexpr char alphabet[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+		static constexpr char alt_alphabet[] = "abcdefghijklmnopqrstuvwxyz234567";
 	};
 
 	struct z_base32 {
@@ -29803,6 +31203,7 @@ namespace encoding {
 		static constexpr std::string_view alt_name = "zbase32";
 
 		static constexpr char alphabet[] = "ybndrfg8ejkmcpqxot1uwisza345h769";
+		static constexpr char alt_alphabet[] = "YBNDRFG8EJKMCPQXOT1UWISZA345H769";
 	};
 
 	struct base16 {
@@ -29810,6 +31211,7 @@ namespace encoding {
 		static constexpr std::string_view alt_name = "hexdec";
 
 		static constexpr char alphabet[] = "0123456789abcdef";
+		static constexpr char alt_alphabet[] = "0123456789ABCDEF";
 	};
 
 	using hexdec = base16;
@@ -29819,6 +31221,7 @@ namespace encoding {
 		static constexpr std::string_view alt_name = "HEXDEC";
 
 		static constexpr char alphabet[] = "0123456789ABCDEF";
+		static constexpr char alt_alphabet[] = "0123456789abcdef";
 	};
 
 	using hexdec_uppercase = base16_uppercase;
@@ -29851,6 +31254,35 @@ namespace encoding {
 	using known_encodings = list<base64, base64_no_padding, base64url, base32, base32_no_padding, z_base32, base16, base16_uppercase, base8, base4, base2>;
 
 } // namespace encoding
+
+struct translation_table {
+	static constexpr size_t table_size = 256;
+	uint8_t data[table_size];
+	consteval translation_table() {
+		for (size_t i = 0; i != table_size; ++i) {
+			data[i] = 255u;
+		}
+	}
+	consteval bool insert_alphabet(std::string_view input) {
+		const size_t length = input.size();
+		for (size_t i = 0; i != length; ++i) {
+			const size_t c = static_cast<size_t>(static_cast<unsigned char>(input[i]));
+			data[c] = static_cast<uint8_t>(i);
+		}
+		return true;
+	}
+};
+
+template <typename Encoding> struct decoding_alphabet {
+	static constexpr auto table = [] {
+		translation_table output{};
+		output.insert_alphabet(Encoding::alphabet);
+		if constexpr (requires { Encoding::alt_alphabet; }) {
+			output.insert_alphabet(Encoding::alt_alphabet);
+		}
+		return output;
+	}();
+};
 
 template <typename Defs> struct dynamic_encodings;
 
@@ -29894,7 +31326,11 @@ template <typename... List> struct dynamic_encodings<encoding::list<List...>>: s
 		const auto success = (unsigned(assign_encoding<List>(name, output)) | ... | 0u);
 
 		if (!success) {
+#if __has_feature(cxx_exceptions)
 			throw std::invalid_argument{"unknown encoding name"};
+#else
+			std::abort();
+#endif
 		}
 
 		assert(output.has_value());

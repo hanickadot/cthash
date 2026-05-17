@@ -37,6 +37,7 @@ namespace encoding {
 		static constexpr std::string_view name = "base32";
 
 		static constexpr char alphabet[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+		static constexpr char alt_alphabet[] = "abcdefghijklmnopqrstuvwxyz234567";
 		static constexpr char padding = '=';
 	};
 
@@ -44,6 +45,7 @@ namespace encoding {
 		static constexpr std::string_view name = "base32_no_padding";
 
 		static constexpr char alphabet[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+		static constexpr char alt_alphabet[] = "abcdefghijklmnopqrstuvwxyz234567";
 	};
 
 	struct z_base32 {
@@ -51,6 +53,7 @@ namespace encoding {
 		static constexpr std::string_view alt_name = "zbase32";
 
 		static constexpr char alphabet[] = "ybndrfg8ejkmcpqxot1uwisza345h769";
+		static constexpr char alt_alphabet[] = "YBNDRFG8EJKMCPQXOT1UWISZA345H769";
 	};
 
 	struct base16 {
@@ -58,6 +61,7 @@ namespace encoding {
 		static constexpr std::string_view alt_name = "hexdec";
 
 		static constexpr char alphabet[] = "0123456789abcdef";
+		static constexpr char alt_alphabet[] = "0123456789ABCDEF";
 	};
 
 	using hexdec = base16;
@@ -67,6 +71,7 @@ namespace encoding {
 		static constexpr std::string_view alt_name = "HEXDEC";
 
 		static constexpr char alphabet[] = "0123456789ABCDEF";
+		static constexpr char alt_alphabet[] = "0123456789abcdef";
 	};
 
 	using hexdec_uppercase = base16_uppercase;
@@ -80,6 +85,15 @@ namespace encoding {
 	};
 
 	using octal = base8;
+
+	struct base8_no_padding {
+		static constexpr std::string_view name = "base8";
+		static constexpr std::string_view alt_name = "octal";
+
+		static constexpr char alphabet[] = "01234567";
+	};
+
+	using octal_no_padding = base8_no_padding;
 
 	struct base4 {
 		static constexpr std::string_view name = "base4";
@@ -99,6 +113,24 @@ namespace encoding {
 	using known_encodings = list<base64, base64_no_padding, base64url, base32, base32_no_padding, z_base32, base16, base16_uppercase, base8, base4, base2>;
 
 } // namespace encoding
+
+struct translation_table {
+	static constexpr size_t table_size = 256;
+	uint8_t data[table_size];
+	consteval translation_table() {
+		for (size_t i = 0; i != table_size; ++i) {
+			data[i] = 255u;
+		}
+	}
+	consteval bool insert_alphabet(std::string_view input) {
+		const size_t length = input.size();
+		for (size_t i = 0; i != length; ++i) {
+			const size_t c = static_cast<size_t>(static_cast<unsigned char>(input[i]));
+			data[c] = static_cast<uint8_t>(i);
+		}
+		return true;
+	}
+};
 
 template <typename Defs> struct dynamic_encodings;
 
@@ -142,7 +174,11 @@ template <typename... List> struct dynamic_encodings<encoding::list<List...>>: s
 		const auto success = (unsigned(assign_encoding<List>(name, output)) | ... | 0u);
 
 		if (!success) {
+#if __has_feature(cxx_exceptions)
 			throw std::invalid_argument{"unknown encoding name"};
+#else
+			std::abort();
+#endif
 		}
 
 		assert(output.has_value());

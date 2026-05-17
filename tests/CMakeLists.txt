@@ -25,6 +25,8 @@ add_executable(test-runner
 	encoding/base.cpp
 	encoding/chunk-of-bits.cpp
 	encoding/selection.cpp
+	decoding/basic.cpp
+	decoding/parse.cpp
 	value.cpp
 	xxhash/basics.cpp
 	keccak.cpp

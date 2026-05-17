@@ -3,6 +3,7 @@
 
 #include "simple.hpp"
 #include "value.hpp"
+#include "encoding/base.hpp"
 #include "internal/bit.hpp"
 #include "internal/concepts.hpp"
 #include "internal/convert.hpp"
@@ -245,6 +246,11 @@ template <typename Config> struct hasher: private internal_hasher<Config> {
 
 	constexpr length_t size() const noexcept {
 		return super::total_length;
+	}
+
+	// parsing hash from string
+	template <typename Encoding = encoding::hexdec> static constexpr std::optional<tagged_hash_value<Config>> parse(const convertible_to_strview auto & str) {
+		return parse_into_hash<Encoding, tagged_hash_value<Config>>(std::basic_string_view(str));
 	}
 };
 
