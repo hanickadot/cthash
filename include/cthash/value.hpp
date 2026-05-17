@@ -39,18 +39,27 @@ struct invalid_text_input { }; // TODO maybe do better?
 template <auto Encoding = cthash::hexdec, typename HashType, typename CharT = char, typename Traits = std::char_traits<CharT>> static constexpr HashType parse_into_hash(std::basic_string_view<CharT, Traits> view) {
 	// TODO check size
 	auto decoded_view = view | cthash::decode(Encoding);
-	// identify<decltype(decoded_view)> i;
 	const size_t needed_size = decoded_view.size();
 	if constexpr (requires { {HashType::size()} -> std::same_as<size_t>; }) {
 		if (needed_size != HashType::size()) {
-			std::cout << "needed_size (" << needed_size << ") != hash_type::size(" << HashType::size() << ")\n";
 			throw invalid_text_input{};
 		}
 	}
-	// TODO variable length hashes?
+	// TODO validate
 	// TODO check correctness (no other characters than alphabet allowed)
 	HashType output{};
 	std::ranges::copy(decoded_view, output.data());
+	return output;
+}
+
+template <size_t N, std::ranges::sized_range R> static constexpr auto materialize_range(R && range) requires(std::convertible_to<std::byte, std::ranges::range_value_t<R>>) {
+	const size_t needed_size = range.size();
+	if (needed_size != N) {
+		throw invalid_text_input{};
+	}
+	// TODO validate
+	std::array<std::byte, N> output;
+	std::ranges::copy(range, output.data());
 	return output;
 }
 
@@ -67,6 +76,9 @@ template <size_t N> struct hash_value: std::array<std::byte, N> {
 	template <typename CharT> explicit constexpr hash_value(const fixed_string<CharT, N * 2u> & in) noexcept: super{internal::hexdec_to_binary<N>(std::span<const CharT, N * 2u>(in.data(), in.size()))} { }
 
 	template <encoding_type Encoding> explicit constexpr hash_value(Encoding, const convertible_to_strview auto & str): hash_value{parse<Encoding{}>(str)} {
+	}
+
+	template <encoding_type auto Encoding, typename R, typename CharT> explicit constexpr hash_value(std::from_range_t, cthash::decode_view<Encoding, R, CharT> && in): hash_value{materialize_range<N>(std::forward<decltype(in)>(in))} {
 	}
 
 	template <auto Encoding = hexdec> static constexpr auto parse(const convertible_to_strview auto & str) {

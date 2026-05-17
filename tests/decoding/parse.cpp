@@ -57,3 +57,9 @@ TEST_CASE("in and out sha3") {
 	auto printed = std::format("{:z_base32}", calculated);
 	REQUIRE(printed == converted);
 }
+
+TEST_CASE("pipe it down") {
+	constexpr auto provided = "M8+2psoustEQTxsrF1w1YQWpPpZyqFETc2CR2iOYUq8="sv | cthash::decode(cthash::base64) | std::ranges::to<cthash::sha3_256_value>();
+	constexpr auto calculated = cthash::sha3_256("hanana").update("banana").final();
+	static_assert(provided == calculated);
+}

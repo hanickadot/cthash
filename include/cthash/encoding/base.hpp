@@ -277,22 +277,22 @@ template <typename CharT = a_byte_type, encoding_type T> consteval auto decode(T
 }
 
 // for compatibility with the old API
-constexpr auto binary_encode = encode_action<encoding::base2, char>{};
-constexpr auto base2_encode = encode_action<encoding::base2, char>{};
-constexpr auto base4_encode = encode_action<encoding::base4, char>{};
-constexpr auto base8_encode = encode_action<encoding::base8, char>{};
-constexpr auto octal_encode = encode_action<encoding::base8, char>{};
-constexpr auto base8_no_padding_encode = encode_action<encoding::base8_no_padding, char>{};
-constexpr auto octal_no_padding_encode = encode_action<encoding::base8_no_padding, char>{};
-constexpr auto hexdec_encode = encode_action<encoding::base16, char>{};
-constexpr auto hexdec_uppercase_encode = encode_action<encoding::base16_uppercase, char>{};
-constexpr auto base16_encode = encode_action<encoding::base16, char>{};
-constexpr auto base32_encode = encode_action<encoding::base32, char>{};
-constexpr auto base32_no_padding_encode = encode_action<encoding::base32_no_padding, char>{};
-constexpr auto z_base32_encode = encode_action<encoding::z_base32, char>{};
-constexpr auto base64_encode = encode_action<encoding::base64, char>{};
-constexpr auto base64url_encode = encode_action<encoding::base64url, char>{};
-constexpr auto base64_no_padding_encode = encode_action<encoding::base64_no_padding, char>{};
+constexpr auto binary_encode = encode<char>(base2);
+constexpr auto base2_encode = encode<char>(base2);
+constexpr auto base4_encode = encode<char>(base4);
+constexpr auto base8_encode = encode<char>(base8);
+constexpr auto octal_encode = encode<char>(base8);
+constexpr auto base8_no_padding_encode = encode<char>(base8_no_padding);
+constexpr auto octal_no_padding_encode = encode<char>(base8_no_padding);
+constexpr auto hexdec_encode = encode<char>(base16);
+constexpr auto hexdec_uppercase_encode = encode<char>(base16_uppercase);
+constexpr auto base16_encode = encode<char>(base16);
+constexpr auto base32_encode = encode<char>(base32);
+constexpr auto base32_no_padding_encode = encode<char>(base32_no_padding);
+constexpr auto z_base32_encode = encode<char>(z_base32);
+constexpr auto base64_encode = encode<char>(base64);
+constexpr auto base64url_encode = encode<char>(base64url);
+constexpr auto base64_no_padding_encode = encode<char>(base64_no_padding);
 
 // same here
 template <typename Encoding, typename CharT = char> constexpr auto encode_to = encode_action<Encoding, CharT>{};
