@@ -93,11 +93,6 @@ TEST_CASE("cool test") {
 	REQUIRE(assigned == converted);
 }
 
-TEST_CASE("oneliner") {
-	const std::string output = cthash::sha3_256("hanana").update("banana").final() | cthash::base64url;
-	REQUIRE(output == "M8-2psoustEQTxsrF1w1YQWpPpZyqFETc2CR2iOYUq8");
-}
-
 TEST_CASE("pipe it down") {
 	constexpr auto provided = "M8+2psoustEQTxsrF1w1YQWpPpZyqFETc2CR2iOYUq8="sv | cthash::base64 | std::ranges::to<cthash::sha3_256_value>();
 	const std::string calculated = cthash::sha3_256("hanana").update("banana").final() | cthash::base64url;

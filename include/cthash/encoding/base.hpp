@@ -142,6 +142,10 @@ template <typename Encoding, typename R, typename ByteT> struct decode_view {
 };
 
 template <encoding_type Encoding, typename ByteT = a_byte_type> struct decode_action {
+	template <size_t N> constexpr friend auto operator|(const char (&in)[N], decode_action action) {
+		// TODO check it's really a string literal
+		return action.operator()(std::string_view(in));
+	}
 	template <std::ranges::input_range R> constexpr friend auto operator|(R && input, decode_action action) requires(character<std::ranges::range_value_t<R>>) {
 		return action.operator()<R>(std::forward<R>(input));
 	}
@@ -258,6 +262,10 @@ template <typename T>
 concept inherits_from_encoding = std::is_base_of_v<encoding_iface, std::remove_cvref_t<T>>;
 
 template <typename Encoding> struct encode_decode_action: Encoding {
+	template <size_t N> constexpr friend auto operator|(const char (&in)[N], encode_decode_action action) {
+		// TODO check it's really a string literal
+		return decode_view<Encoding, std::string_view, a_byte_type>(std::string_view(in));
+	}
 	template <std::ranges::input_range R> constexpr friend auto operator|(R && input, encode_decode_action) requires(character<std::ranges::range_value_t<R>>) {
 		return decode_view<Encoding, R, a_byte_type>(std::forward<R>(input));
 	}

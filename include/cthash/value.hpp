@@ -81,6 +81,9 @@ template <size_t N> struct hash_value: std::array<std::byte, N> {
 	template <encoding_type Encoding, typename R, typename CharT> explicit constexpr hash_value(std::from_range_t, cthash::decode_view<Encoding, R, CharT> && in): hash_value{materialize_range<N>(std::forward<decltype(in)>(in))} {
 	}
 
+	template <encoding_type Encoding, typename R, typename CharT> explicit constexpr hash_value(cthash::decode_view<Encoding, R, CharT> && in): hash_value{materialize_range<N>(std::forward<decltype(in)>(in))} {
+	}
+
 	template <auto Encoding = hexdec> static constexpr auto parse(const convertible_to_strview auto & str) {
 		return parse_into_hash<Encoding, hash_value>(std::basic_string_view{str});
 	}
