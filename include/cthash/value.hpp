@@ -78,7 +78,7 @@ template <size_t N> struct hash_value: std::array<std::byte, N> {
 	template <encoding_type Encoding> explicit constexpr hash_value(Encoding, const convertible_to_strview auto & str): hash_value{parse<Encoding{}>(str)} {
 	}
 
-	template <encoding_type auto Encoding, typename R, typename CharT> explicit constexpr hash_value(std::from_range_t, cthash::decode_view<Encoding, R, CharT> && in): hash_value{materialize_range<N>(std::forward<decltype(in)>(in))} {
+	template <encoding_type Encoding, typename R, typename CharT> explicit constexpr hash_value(std::from_range_t, cthash::decode_view<Encoding, R, CharT> && in): hash_value{materialize_range<N>(std::forward<decltype(in)>(in))} {
 	}
 
 	template <auto Encoding = hexdec> static constexpr auto parse(const convertible_to_strview auto & str) {
@@ -110,8 +110,8 @@ template <size_t N> struct hash_value: std::array<std::byte, N> {
 		return operator<=>(lhs, std::span<const std::ranges::range_value_t<decltype(other)>>{other});
 	}
 
-	template <typename Encoding = cthash::encoding::hexdec, typename CharT, typename Traits> constexpr auto & print_into(std::basic_ostream<CharT, Traits> & os) const {
-		auto hexdec_view = *this | cthash::encode_to<Encoding, CharT>;
+	template <encoding_type auto Encoding = cthash::hexdec, typename CharT, typename Traits> constexpr auto & print_into(std::basic_ostream<CharT, Traits> & os) const {
+		auto hexdec_view = *this | cthash::encode(Encoding);
 		std::ranges::copy(hexdec_view, std::ostream_iterator<CharT, CharT>(os));
 		return os;
 	}
@@ -133,8 +133,8 @@ template <size_t N> struct hash_value: std::array<std::byte, N> {
 		std::ranges::copy(this->end() - SuffixN, this->end(), output.begin());
 		return output;
 	}
-	template <typename Encoding = cthash::encoding::hexdec, typename CharT = char> constexpr friend auto to_string(const hash_value & value) {
-		const auto encoded = value | cthash::encode_to<Encoding, CharT>;
+	template <encoding_type auto Encoding = cthash::hexdec, typename CharT = char> constexpr friend auto to_string(const hash_value & value) {
+		const auto encoded = value | cthash::encode(Encoding);
 #if __cpp_lib_ranges_to_container >= 202202L
 		return std::ranges::to<std::basic_string<CharT>>(encoded);
 #else
@@ -146,10 +146,10 @@ template <size_t N> struct hash_value: std::array<std::byte, N> {
 		return result;
 #endif
 	}
-	template <typename Encoding = cthash::encoding::hexdec, typename CharT = char> constexpr friend auto to_fixed_string(const hash_value & value) {
-		const auto encoded = value | cthash::encode_to<Encoding, CharT>;
+	template <encoding_type auto Encoding = cthash::hexdec, typename CharT = char> constexpr friend auto to_fixed_string(const hash_value & value) {
+		const auto encoded = value | cthash::encode(Encoding);
 		// it's type dependendent so we can calculate the size...
-		constexpr size_t size_needed = (hash_value{} | cthash::encode_to<Encoding, CharT>).size();
+		constexpr size_t size_needed = (hash_value{} | cthash::encode(Encoding)).size();
 
 		auto result = cthash::fixed_string<CharT, size_needed>{nullptr};
 
@@ -185,13 +185,13 @@ template <typename Tag, size_t = internal::digest_bytes_length_of<Tag>> struct t
 
 	template <typename CharT> explicit constexpr tagged_hash_value(const fixed_string<CharT, N * 2u> & in) noexcept: super{in} { }
 
-	template <auto Encoding = hexdec> static constexpr auto parse(const convertible_to_strview auto & str) {
+	template <encoding_type auto Encoding = hexdec> static constexpr auto parse(const convertible_to_strview auto & str) {
 		return parse_into_hash<Encoding, tagged_hash_value>(std::basic_string_view{str});
 	}
 
 	static constexpr size_t digest_length = N;
 
-	template <typename Encoding = default_encoding<Tag>::encoding, typename CharT, typename Traits> constexpr auto & print_into(std::basic_ostream<CharT, Traits> & os) const {
+	template <encoding_type auto Encoding = typename default_encoding<Tag>::encoding{}, typename CharT, typename Traits> constexpr auto & print_into(std::basic_ostream<CharT, Traits> & os) const {
 		return super::template print_into<Encoding>(os);
 	}
 
@@ -199,11 +199,11 @@ template <typename Tag, size_t = internal::digest_bytes_length_of<Tag>> struct t
 		return val.print_into(os);
 	}
 
-	template <typename Encoding = typename cthash::default_encoding<Tag>::encoding, typename CharT = char> constexpr friend auto to_string(const tagged_hash_value & value) {
+	template <encoding_type auto Encoding = typename cthash::default_encoding<Tag>::encoding{}, typename CharT = char> constexpr friend auto to_string(const tagged_hash_value & value) {
 		return to_string<Encoding, CharT>(static_cast<const super &>(value));
 	}
 
-	template <typename Encoding = typename cthash::default_encoding<Tag>::encoding, typename CharT = char> constexpr friend auto to_fixed_string(const tagged_hash_value & value) {
+	template <encoding_type auto Encoding = typename cthash::default_encoding<Tag>::encoding{}, typename CharT = char> constexpr friend auto to_fixed_string(const tagged_hash_value & value) {
 		return to_fixed_string<Encoding, CharT>(static_cast<const super &>(value));
 	}
 
@@ -268,8 +268,8 @@ struct formatter<cthash::hash_value<N>, CharT> {
 	}
 
 	template <typename FormatContext> constexpr auto format(const subject_type & value, FormatContext & ctx) const {
-		return encoding.visit([&]<typename SelectedEncoding>(SelectedEncoding) {
-			return std::ranges::copy(value | cthash::encode_to<SelectedEncoding, CharT>, ctx.out()).out;
+		return encoding.visit([&]<typename SelectedEncoding>(SelectedEncoding selected_encoding) {
+			return std::ranges::copy(value | cthash::encode(selected_encoding), ctx.out()).out;
 		});
 	}
 };
@@ -288,8 +288,8 @@ struct formatter<cthash::tagged_hash_value<Tag, N>, CharT> {
 	}
 
 	template <typename FormatContext> constexpr auto format(const subject_type & value, FormatContext & ctx) const {
-		return encoding.visit([&]<typename SelectedEncoding>(SelectedEncoding) {
-			return std::ranges::copy(value | cthash::encode_to<SelectedEncoding, CharT>, ctx.out()).out;
+		return encoding.visit([&]<typename SelectedEncoding>(SelectedEncoding selected_encoding) {
+			return std::ranges::copy(value | cthash::encode(selected_encoding), ctx.out()).out;
 		});
 	}
 };

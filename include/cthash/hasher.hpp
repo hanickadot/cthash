@@ -208,8 +208,8 @@ template <typename Config> struct hasher: private internal_hasher<Config> {
 	constexpr hasher(hasher &&) noexcept = default;
 	constexpr ~hasher() noexcept = default;
 
-	template <typename T> explicit constexpr hasher(T && in) noexcept requires requires(hasher & h, T && in) { h.update(in); }: hasher{} {
-		update(in);
+	template <typename T> explicit constexpr hasher(T && local_input) noexcept requires requires(hasher & h, T && lin) { h.update(lin); }: hasher{} {
+		update(local_input);
 	}
 
 	// support for various input types

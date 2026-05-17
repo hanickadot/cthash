@@ -231,19 +231,19 @@ template <typename Container = std::string> auto materialize(auto && range) {
 TEST_CASE("static and dynamic path generates same results (keccak384)") {
 	auto hash = cthash::keccak_384().update("hanicka").final();
 
-	REQUIRE(std::format("{:base2}", hash) == materialize(hash | cthash::base2_encode));
-	REQUIRE(std::format("{:binary}", hash) == materialize(hash | cthash::binary_encode));
-	REQUIRE(std::format("{:base4}", hash) == materialize(hash | cthash::base4_encode));
-	REQUIRE(std::format("{:base8}", hash) == materialize(hash | cthash::base8_encode));
-	REQUIRE(std::format("{:octal}", hash) == materialize(hash | cthash::octal_encode));
-	REQUIRE(std::format("{:base16}", hash) == materialize(hash | cthash::base16_encode));
-	REQUIRE(std::format("{:hexdec}", hash) == materialize(hash | cthash::hexdec_encode));
-	REQUIRE(std::format("{:base32}", hash) == materialize(hash | cthash::base32_encode));
-	REQUIRE(std::format("{:base32_no_padding}", hash) == materialize(hash | cthash::base32_no_padding_encode));
-	REQUIRE(std::format("{:z_base32}", hash) == materialize(hash | cthash::z_base32_encode));
-	REQUIRE(std::format("{:base64}", hash) == materialize(hash | cthash::base64_encode));
-	REQUIRE(std::format("{:base64url}", hash) == materialize(hash | cthash::base64url_encode));
-	REQUIRE(std::format("{:base64_no_padding}", hash) == materialize(hash | cthash::base64_no_padding_encode));
+	REQUIRE(std::format("{:base2}", hash) == materialize(hash | cthash::base2));
+	REQUIRE(std::format("{:binary}", hash) == materialize(hash | cthash::binary));
+	REQUIRE(std::format("{:base4}", hash) == materialize(hash | cthash::base4));
+	REQUIRE(std::format("{:base8}", hash) == materialize(hash | cthash::base8));
+	REQUIRE(std::format("{:octal}", hash) == materialize(hash | cthash::octal));
+	REQUIRE(std::format("{:base16}", hash) == materialize(hash | cthash::base16));
+	REQUIRE(std::format("{:hexdec}", hash) == materialize(hash | cthash::hexdec));
+	REQUIRE(std::format("{:base32}", hash) == materialize(hash | cthash::base32));
+	REQUIRE(std::format("{:base32_no_padding}", hash) == materialize(hash | cthash::base32_no_padding));
+	REQUIRE(std::format("{:z_base32}", hash) == materialize(hash | cthash::z_base32));
+	REQUIRE(std::format("{:base64}", hash) == materialize(hash | cthash::base64));
+	REQUIRE(std::format("{:base64url}", hash) == materialize(hash | cthash::base64url));
+	REQUIRE(std::format("{:base64_no_padding}", hash) == materialize(hash | cthash::base64_no_padding));
 }
 
 TEST_CASE("keccak-384 formatting (shortening)") {

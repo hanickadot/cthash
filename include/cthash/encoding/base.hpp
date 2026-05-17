@@ -81,8 +81,8 @@ template <typename T> concept has_conversion = requires {
 	{ T::convert('a') } -> std::convertible_to<a_byte_type>;
 };
 
-template <encoding_type auto Encoding, typename R, typename ByteT = a_byte_type> struct decode_view {
-	using properties = encoding_properties<decltype(Encoding)>;
+template <typename Encoding, typename R, typename ByteT> struct decode_view {
+	using properties = encoding_properties<Encoding>;
 	// output is 8
 	// input depends on the encoding
 	using chunk_view = cthash::chunk_of_bits_view<8, properties::has_padding, R, properties::bits, properties>;
@@ -146,12 +146,12 @@ template <encoding_type Encoding, typename ByteT = a_byte_type> struct decode_ac
 		return action.operator()<R>(std::forward<R>(input));
 	}
 	template <std::ranges::input_range R> constexpr auto operator()(R && input) const requires(character<std::ranges::range_value_t<R>>) {
-		return decode_view<Encoding{}, R, ByteT>(std::forward<R>(input));
+		return decode_view<Encoding, R, ByteT>(std::forward<R>(input));
 	}
 };
 
-template <encoding_type auto Encoding, typename R, typename CharT = a_character_type> struct encode_view {
-	using properties = encoding_properties<decltype(Encoding)>;
+template <typename Encoding, typename R, typename CharT> struct encode_view {
+	using properties = encoding_properties<Encoding>;
 	using chunk_view = cthash::chunk_of_bits_view<properties::bits, properties::has_padding, R>;
 
 	struct sentinel {
@@ -183,7 +183,7 @@ template <encoding_type auto Encoding, typename R, typename CharT = a_character_
 					return properties::padding;
 				}
 			}
-			return static_cast<value_type>(decltype(Encoding)::alphabet[static_cast<unsigned>(tmp.value)]);
+			return static_cast<value_type>(Encoding::alphabet[static_cast<unsigned>(tmp.value)]);
 		}
 
 		constexpr friend bool operator==(const iterator &, const iterator &) noexcept = default;
@@ -227,6 +227,10 @@ template <encoding_type auto Encoding, typename R, typename CharT = a_character_
 #endif
 	}
 
+	template <typename StrCharT = CharT, typename Traits = std::char_traits<StrCharT>> constexpr operator std::basic_string<StrCharT, Traits>() const noexcept {
+		return std::basic_string<StrCharT, Traits>(std::from_range, *this);
+	}
+
 	template <typename StrCharT> constexpr friend std::basic_ostream<StrCharT> & operator<<(std::basic_ostream<StrCharT> & out, encode_view in) {
 		std::ranges::copy(in.begin(), in.end(), std::ostream_iterator<CharT>(out));
 		return out;
@@ -239,32 +243,59 @@ struct encode_action {
 		return action.operator()<R>(std::forward<R>(input));
 	}
 	template <std::ranges::input_range R> constexpr auto operator()(R && input) const {
-		return encode_view<Encoding{}, R, CharT>(std::forward<R>(input));
+		return encode_view<Encoding, R, CharT>(std::forward<R>(input));
+	}
+};
+
+struct encoding_iface;
+
+template <typename Encoding, typename R, typename CharT> struct encode_view;
+template <typename Encoding, typename R, typename CharT> struct decode_view;
+struct a_character_type;
+struct a_byte_type;
+
+template <typename T>
+concept inherits_from_encoding = std::is_base_of_v<encoding_iface, std::remove_cvref_t<T>>;
+
+template <typename Encoding> struct encode_decode_action: Encoding {
+	template <std::ranges::input_range R> constexpr friend auto operator|(R && input, encode_decode_action) requires(character<std::ranges::range_value_t<R>>) {
+		return decode_view<Encoding, R, a_byte_type>(std::forward<R>(input));
+	}
+	template <std::ranges::input_range R> constexpr friend auto operator|(R && input, encode_decode_action) requires(std::same_as<std::byte, std::ranges::range_value_t<R>>) {
+		return encode_view<Encoding, R, a_character_type>(std::forward<R>(input));
 	}
 };
 
 // just aliases to existing encodings
-static constexpr auto base2 = encoding::base2{};
-static constexpr auto binary = encoding::base2{};
-static constexpr auto base4 = encoding::base4{};
-static constexpr auto base8 = encoding::base8{};
-static constexpr auto octal = encoding::base8{};
-static constexpr auto base8_no_padding = encoding::base8_no_padding{};
-static constexpr auto octal_no_padding = encoding::base8_no_padding{};
-static constexpr auto base16 = encoding::base16{};
-static constexpr auto base16_uppercase = encoding::base16_uppercase{};
-static constexpr auto hexdec = encoding::base16{};
-static constexpr auto hexdec_uppercase = encoding::base16_uppercase{};
-static constexpr auto base32 = encoding::base32{};
-static constexpr auto base32_no_padding = encoding::base32_no_padding{};
-static constexpr auto z_base32 = encoding::z_base32{};
-static constexpr auto base64 = encoding::base64{};
-static constexpr auto base64url = encoding::base64url{};
-static constexpr auto base64_no_padding = encoding::base64_no_padding{};
+static constexpr auto base2 = encode_decode_action<encoding::base2>{};
+static constexpr auto binary = encode_decode_action<encoding::base2>{};
+static constexpr auto base4 = encode_decode_action<encoding::base4>{};
+static constexpr auto base8 = encode_decode_action<encoding::base8>{};
+static constexpr auto octal = encode_decode_action<encoding::base8>{};
+static constexpr auto base8_no_padding = encode_decode_action<encoding::base8_no_padding>{};
+static constexpr auto octal_no_padding = encode_decode_action<encoding::base8_no_padding>{};
+static constexpr auto base16 = encode_decode_action<encoding::base16>{};
+static constexpr auto base16_uppercase = encode_decode_action<encoding::base16_uppercase>{};
+static constexpr auto hexdec = encode_decode_action<encoding::base16>{};
+static constexpr auto hexdec_uppercase = encode_decode_action<encoding::base16_uppercase>{};
+static constexpr auto base32 = encode_decode_action<encoding::base32>{};
+static constexpr auto base32_no_padding = encode_decode_action<encoding::base32_no_padding>{};
+static constexpr auto z_base32 = encode_decode_action<encoding::z_base32>{};
+static constexpr auto base64 = encode_decode_action<encoding::base64>{};
+static constexpr auto base64url = encode_decode_action<encoding::base64url>{};
+static constexpr auto base64_no_padding = encode_decode_action<encoding::base64_no_padding>{};
 
 static constexpr auto unknown = encoding::unknown{};
 
 // encoding / decoding interface
+
+template <typename CharT = a_character_type, encoding_type T> consteval auto encode(encode_decode_action<T>) {
+	return encode_action<T, CharT>{};
+}
+
+template <typename CharT = a_byte_type, encoding_type T> consteval auto decode(encode_decode_action<T>) {
+	return decode_action<T, CharT>{};
+}
 
 template <typename CharT = a_character_type, encoding_type T> consteval auto encode(T) {
 	return encode_action<T, CharT>{};
@@ -275,25 +306,27 @@ template <typename CharT = a_byte_type, encoding_type T> consteval auto decode(T
 }
 
 // for compatibility with the old API
-constexpr auto binary_encode = encode<char>(base2);
-constexpr auto base2_encode = encode<char>(base2);
-constexpr auto base4_encode = encode<char>(base4);
-constexpr auto base8_encode = encode<char>(base8);
-constexpr auto octal_encode = encode<char>(base8);
-constexpr auto base8_no_padding_encode = encode<char>(base8_no_padding);
-constexpr auto octal_no_padding_encode = encode<char>(base8_no_padding);
-constexpr auto hexdec_encode = encode<char>(base16);
-constexpr auto hexdec_uppercase_encode = encode<char>(base16_uppercase);
-constexpr auto base16_encode = encode<char>(base16);
-constexpr auto base32_encode = encode<char>(base32);
-constexpr auto base32_no_padding_encode = encode<char>(base32_no_padding);
-constexpr auto z_base32_encode = encode<char>(z_base32);
-constexpr auto base64_encode = encode<char>(base64);
-constexpr auto base64url_encode = encode<char>(base64url);
-constexpr auto base64_no_padding_encode = encode<char>(base64_no_padding);
+[[deprecated("use cthash::encode(base2)")]] constexpr auto binary_encode = encode<char>(base2);
+[[deprecated("use cthash::encode(base2)")]] constexpr auto base2_encode = encode<char>(base2);
+[[deprecated("use cthash::encode(base4)")]] constexpr auto base4_encode = encode<char>(base4);
+[[deprecated("use cthash::encode(base8)")]] constexpr auto base8_encode = encode<char>(base8);
+[[deprecated("use cthash::encode(base8)")]] constexpr auto octal_encode = encode<char>(base8);
+[[deprecated("use cthash::encode(base8_no_padding)")]] constexpr auto base8_no_padding_encode = encode<char>(base8_no_padding);
+[[deprecated("use cthash::encode(base8_no_padding)")]] constexpr auto octal_no_padding_encode = encode<char>(base8_no_padding);
+[[deprecated("use cthash::encode(base16)")]] constexpr auto hexdec_encode = encode<char>(base16);
+[[deprecated("use cthash::encode(base16_uppercase)")]] constexpr auto hexdec_uppercase_encode = encode<char>(base16_uppercase);
+[[deprecated("use cthash::encode(base16)")]] constexpr auto base16_encode = encode<char>(base16);
+[[deprecated("use cthash::encode(base32)")]] constexpr auto base32_encode = encode<char>(base32);
+[[deprecated("use cthash::encode(base32_no_padding)")]] constexpr auto base32_no_padding_encode = encode<char>(base32_no_padding);
+[[deprecated("use cthash::encode(z_base32)")]] constexpr auto z_base32_encode = encode<char>(z_base32);
+[[deprecated("use cthash::encode(base64)")]] constexpr auto base64_encode = encode<char>(base64);
+[[deprecated("use cthash::encode(base64url)")]] constexpr auto base64url_encode = encode<char>(base64url);
+[[deprecated("use cthash::encode(base64_no_padding)")]] constexpr auto base64_no_padding_encode = encode<char>(base64_no_padding);
 
 // same here
-template <typename Encoding, typename CharT = char> constexpr auto encode_to = encode_action<Encoding, CharT>{};
+template <typename Encoding, typename CharT = char>
+[[deprecated("move to cthash::encode(cthash::ENCODING)")]]
+constexpr auto encode_to = encode_action<Encoding, CharT>{};
 
 } // namespace cthash
 
@@ -306,9 +339,9 @@ namespace std {
 // template <typename Encoding, typename CharT, typename R> struct encode_view
 
 #ifdef CTHASH_STDFMT_AVAILABLE
-template <cthash::encoding_type auto Encoding, typename R, typename CharT>
-struct formatter<cthash::encode_view<Encoding, R>, CharT> {
-	using subject_type = cthash::encode_view<Encoding, R>;
+template <typename Encoding, typename R, typename EncCharT, typename CharT>
+struct formatter<cthash::encode_view<Encoding, R, EncCharT>, CharT> {
+	using subject_type = cthash::encode_view<Encoding, R, EncCharT>;
 
 	template <typename ParseContext> constexpr auto parse(ParseContext & ctx) {
 		return std::ranges::begin(ctx);

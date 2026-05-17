@@ -282,7 +282,7 @@ template <typename Config> struct keccak_hasher: basic_keccak_hasher<Config> {
 	constexpr keccak_hasher(keccak_hasher &&) noexcept = default;
 	constexpr ~keccak_hasher() noexcept = default;
 
-	template <typename T> explicit constexpr keccak_hasher(T && in) noexcept requires requires(keccak_hasher & h, T && in) { h.update(in); }: keccak_hasher{} {
+	template <typename T> explicit constexpr keccak_hasher(T && in) noexcept requires requires(keccak_hasher & h, T && lin) { h.update(lin); }: keccak_hasher{} {
 		update(in);
 	}
 

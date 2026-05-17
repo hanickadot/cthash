@@ -58,8 +58,48 @@ TEST_CASE("in and out sha3") {
 	REQUIRE(printed == converted);
 }
 
+TEST_CASE("cool test") {
+	// no allocation, all is same type
+	using sha3_val_t = cthash::sha3_256_value;
+	static_assert(sizeof(sha3_val_t) == 32);
+
+	// read from string (multiple APIs possible)
+	constexpr sha3_val_t base64_parsed_pipe = "M8+2psoustEQTxsrF1w1YQWpPpZyqFETc2CR2iOYUq8="sv | cthash::base64 | std::ranges::to<cthash::sha3_256_value>();
+	constexpr sha3_val_t base64_parsed_tag = cthash::sha3_256_value{cthash::base64, "M8+2psoustEQTxsrF1w1YQWpPpZyqFETc2CR2iOYUq8="sv};
+	REQUIRE(base64_parsed_pipe == base64_parsed_tag);
+
+	// calculate from something instead
+	constexpr sha3_val_t calculated = cthash::sha3_256("hanana").update("banana").final();
+	REQUIRE(base64_parsed_pipe == calculated);
+
+	// can't compare to other hash value type
+	REQUIRE_FALSE((comparable<decltype(calculated), cthash::sha256_value>));
+
+	// we also have literals
+	constexpr sha3_val_t hexdec_parsed = "33cfb6a6ca2eb2d1104f1b2b175c356105a93e9672a85113736091da239852af"_sha3_256;
+	REQUIRE(hexdec_parsed == calculated);
+	REQUIRE(base64_parsed_pipe == calculated);
+
+	// we can also convert back to string
+	const std::string converted = calculated | cthash::z_base32 | std::ranges::to<std::string>();
+	REQUIRE(converted == "gx85pjskf43pnrnxdcitqzbicrn41xwsqkwfnr5ucne7wehakkzo");
+
+	// or format
+	const std::string printed = std::format("{:z_base32}", calculated);
+	REQUIRE(printed == converted);
+
+	// or just assign
+	const std::string assigned = calculated | cthash::z_base32;
+	REQUIRE(assigned == converted);
+}
+
+TEST_CASE("oneliner") {
+	const std::string output = cthash::sha3_256("hanana").update("banana").final() | cthash::base64url;
+	REQUIRE(output == "M8-2psoustEQTxsrF1w1YQWpPpZyqFETc2CR2iOYUq8");
+}
+
 TEST_CASE("pipe it down") {
-	constexpr auto provided = "M8+2psoustEQTxsrF1w1YQWpPpZyqFETc2CR2iOYUq8="sv | cthash::decode(cthash::base64) | std::ranges::to<cthash::sha3_256_value>();
-	constexpr auto calculated = cthash::sha3_256("hanana").update("banana").final();
-	static_assert(provided == calculated);
+	constexpr auto provided = "M8+2psoustEQTxsrF1w1YQWpPpZyqFETc2CR2iOYUq8="sv | cthash::base64 | std::ranges::to<cthash::sha3_256_value>();
+	const std::string calculated = cthash::sha3_256("hanana").update("banana").final() | cthash::base64url;
+	REQUIRE("M8-2psoustEQTxsrF1w1YQWpPpZyqFETc2CR2iOYUq8"sv == calculated);
 }
