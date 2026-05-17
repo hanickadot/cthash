@@ -111,7 +111,7 @@ template <size_t N> struct hash_value: std::array<std::byte, N> {
 	}
 
 	template <typename Encoding = cthash::encoding::hexdec, typename CharT, typename Traits> constexpr auto & print_into(std::basic_ostream<CharT, Traits> & os) const {
-		auto hexdec_view = *this | cthash::encode_to<Encoding, CharT>;
+		auto hexdec_view = *this | cthash::encode<Encoding, CharT>;
 		std::ranges::copy(hexdec_view, std::ostream_iterator<CharT, CharT>(os));
 		return os;
 	}

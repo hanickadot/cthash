@@ -81,9 +81,7 @@ template <typename T> concept has_conversion = requires {
 	{ T::convert('a') } -> std::convertible_to<a_byte_type>;
 };
 
-template <typename> struct identify;
-
-template <auto Encoding, typename R, typename ByteT = a_byte_type> struct decode_view {
+template <encoding_type auto Encoding, typename R, typename ByteT = a_byte_type> struct decode_view {
 	using properties = encoding_properties<decltype(Encoding)>;
 	// output is 8
 	// input depends on the encoding
@@ -143,17 +141,17 @@ template <auto Encoding, typename R, typename ByteT = a_byte_type> struct decode
 	}
 };
 
-template <auto Encoding, typename ByteT = a_byte_type> struct decode_action {
+template <encoding_type Encoding, typename ByteT = a_byte_type> struct decode_action {
 	template <std::ranges::input_range R> constexpr friend auto operator|(R && input, decode_action action) requires(character<std::ranges::range_value_t<R>>) {
 		return action.operator()<R>(std::forward<R>(input));
 	}
 	template <std::ranges::input_range R> constexpr auto operator()(R && input) const requires(character<std::ranges::range_value_t<R>>) {
-		return decode_view<Encoding, R, ByteT>(std::forward<R>(input));
+		return decode_view<Encoding{}, R, ByteT>(std::forward<R>(input));
 	}
 };
 
-template <typename Encoding, typename R, typename CharT = a_character_type> struct encode_view {
-	using properties = encoding_properties<Encoding>;
+template <encoding_type auto Encoding, typename R, typename CharT = a_character_type> struct encode_view {
+	using properties = encoding_properties<decltype(Encoding)>;
 	using chunk_view = cthash::chunk_of_bits_view<properties::bits, properties::has_padding, R>;
 
 	struct sentinel {
@@ -185,7 +183,7 @@ template <typename Encoding, typename R, typename CharT = a_character_type> stru
 					return properties::padding;
 				}
 			}
-			return static_cast<value_type>(Encoding::alphabet[static_cast<unsigned>(tmp.value)]);
+			return static_cast<value_type>(decltype(Encoding)::alphabet[static_cast<unsigned>(tmp.value)]);
 		}
 
 		constexpr friend bool operator==(const iterator &, const iterator &) noexcept = default;
@@ -235,13 +233,13 @@ template <typename Encoding, typename R, typename CharT = a_character_type> stru
 	}
 };
 
-template <typename Encoding = void, typename CharT = a_character_type>
+template <encoding_type Encoding, typename CharT = a_character_type>
 struct encode_action {
 	template <std::ranges::input_range R> constexpr friend auto operator|(R && input, encode_action action) {
 		return action.operator()<R>(std::forward<R>(input));
 	}
 	template <std::ranges::input_range R> constexpr auto operator()(R && input) const {
-		return encode_view<Encoding, R, CharT>(std::forward<R>(input));
+		return encode_view<Encoding{}, R, CharT>(std::forward<R>(input));
 	}
 };
 
@@ -273,7 +271,7 @@ template <typename CharT = a_character_type, encoding_type T> consteval auto enc
 }
 
 template <typename CharT = a_byte_type, encoding_type T> consteval auto decode(T) {
-	return decode_action<T{}, CharT>{};
+	return decode_action<T, CharT>{};
 }
 
 // for compatibility with the old API
@@ -296,7 +294,6 @@ constexpr auto base64_no_padding_encode = encode<char>(base64_no_padding);
 
 // same here
 template <typename Encoding, typename CharT = char> constexpr auto encode_to = encode_action<Encoding, CharT>{};
-template <typename Encoding, typename ByteT = std::byte> constexpr auto decode_from = decode_action<Encoding{}, ByteT>{};
 
 } // namespace cthash
 
@@ -309,7 +306,7 @@ namespace std {
 // template <typename Encoding, typename CharT, typename R> struct encode_view
 
 #ifdef CTHASH_STDFMT_AVAILABLE
-template <typename Encoding, typename R, typename CharT>
+template <cthash::encoding_type auto Encoding, typename R, typename CharT>
 struct formatter<cthash::encode_view<Encoding, R>, CharT> {
 	using subject_type = cthash::encode_view<Encoding, R>;
 
