@@ -36,21 +36,24 @@ template <typename Lhs, typename Rhs> concept comparable = requires(const Lhs & 
 
 TEST_CASE("in and out sha3") {
 	// read from somewhere already calculated
-	auto hash = cthash::sha3_256_value{cthash::base64, "A0idtwV8rNRViuLCPg6DIPPUIkd69a7lLB9SiE5u/Oc="sv};
+	auto base64_parsed = cthash::sha3_256_value{cthash::base64, "A0idtwV8rNRViuLCPg6DIPPUIkd69a7lLB9SiE5u/Oc="sv};
 
 	// calculating from
-	auto chash = cthash::sha3_256("aloha").final();
-	REQUIRE(hash == chash);
+	auto calculated = cthash::sha3_256("aloha").final();
+	REQUIRE(base64_parsed == calculated);
 
 	// they can't even be compared! because they are different type
-	REQUIRE_FALSE((comparable<decltype(chash), cthash::sha256_value>));
+	REQUIRE_FALSE((comparable<decltype(calculated), cthash::sha256_value>));
 
 	// literal
-	auto phash = "03489db7057cacd4558ae2c23e0e8320f3d422477af5aee52c1f52884e6efce7"_sha3_256;
-	REQUIRE(phash == chash);
-	REQUIRE(phash == hash);
+	auto hexdec_parsed = "03489db7057cacd4558ae2c23e0e8320f3d422477af5aee52c1f52884e6efce7"_sha3_256;
+	REQUIRE(hexdec_parsed == calculated);
+	REQUIRE(base64_parsed == calculated);
 
 	// and encode into base32 (lazily, hence the helper)
-	auto ohash = stringify(hash | cthash::encode(cthash::z_base32));
-	REQUIRE(ohash == "yprj5pafx1speickhmbdhdwdrd37ee18xm4473jcd7jeouuq9uuo");
+	auto converted = calculated | cthash::encode(cthash::z_base32) | std::ranges::to<std::string>();
+	REQUIRE(converted == "yprj5pafx1speickhmbdhdwdrd37ee18xm4473jcd7jeouuq9uuo");
+
+	auto printed = std::format("{:z_base32}", calculated);
+	REQUIRE(printed == converted);
 }
